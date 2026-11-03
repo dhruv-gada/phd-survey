@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin · PhD survey</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 520px; margin: 40px auto; padding: 0 16px; color: #1b1b19; }
+  a, button { font: inherit; }
+  .btn { display: inline-block; padding: 10px 16px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; text-decoration: none; color: inherit; margin: 6px 6px 0 0; }
+  .danger { border-color: #d03b3b; color: #d03b3b; }
+  #confirm { margin-top: 14px; padding: 14px; border: 1px solid #d03b3b; border-radius: 10px; }
+  [hidden] { display: none; }
+</style>
+</head>
+<body>
+<h1>Survey admin</h1>
+<p id="count">Loading…</p>
+<a class="btn" id="csv" href="#">Download responses (CSV)</a>
+<a class="btn" href="/results">Open live results</a>
+<button class="btn danger" id="reset">Clear all responses…</button>
+<div id="confirm" hidden>
+  <p><b>Delete every response?</b> This can't be undone. Download the CSV first if you need it.</p>
+  <button class="btn danger" id="yes">Yes, delete all</button>
+  <button class="btn" id="no">Cancel</button>
+</div>
+<p id="msg"></p>
+<script>
+const key = new URLSearchParams(location.search).get("key") || "";
+document.getElementById("csv").href = "/export.csv?key=" + encodeURIComponent(key);
+fetch("/api/summary").then(r => r.json()).then(s => document.getElementById("count").textContent = s.total + " responses so far.");
+const c = document.getElementById("confirm");
+document.getElementById("reset").onclick = () => (c.hidden = false);
+document.getElementById("no").onclick = () => (c.hidden = true);
+document.getElementById("yes").onclick = async () => {
+  const r = await fetch("/api/reset", { method: "POST", headers: { "x-admin-key": key } });
+  document.getElementById("msg").textContent = r.ok ? "All responses cleared." : "Wrong or missing admin key.";
+  c.hidden = true;
+  if (r.ok) document.getElementById("count").textContent = "0 responses so far.";
+};
+</script>
+</body>
+</html>

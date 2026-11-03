@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live results · Let us work together</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --bg: #f3f2ee; --surface-1: #fcfcfb; --line: #e4e2da; --grid: #ecebe5;
+    --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #77766f;
+    --series-1: #2a78d6; --track: #efeee9;
+    --div-pos: #2a78d6; --div-mid: #c9c8c0; --div-neg: #e34948;
+    --live: #0ca30c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --bg: #121211; --surface-1: #1a1a19; --line: #2e2e2b; --grid: #262624;
+      --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+      --series-1: #3987e5; --track: #252523;
+      --div-pos: #3987e5; --div-mid: #5a5a55; --div-neg: #e66767;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .viz-root { background: var(--bg); color: var(--text-primary); min-height: 100vh; }
+  .wrap { display: grid; grid-template-columns: 300px 1fr; gap: 20px; padding: 20px; max-width: 1600px; margin: 0 auto; }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+
+  aside { position: sticky; top: 20px; align-self: start; display: flex; flex-direction: column; gap: 16px; }
+  @media (max-width: 900px) { aside { position: static; } }
+  .card { background: var(--surface-1); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  .brand h1 { font-size: 24px; line-height: 1.15; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .brand p { margin: 0; color: var(--text-secondary); }
+  .live { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; }
+  .live i { width: 9px; height: 9px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 0 rgba(12,163,12,.5); animation: pulse 2s infinite; }
+  .live.off i { background: var(--text-muted); animation: none; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(12,163,12,.45); } 70% { box-shadow: 0 0 0 8px rgba(12,163,12,0); } 100% { box-shadow: 0 0 0 0 rgba(12,163,12,0); } }
+  .qr { background: #fff; border-radius: 10px; padding: 10px; }
+  .qr img { display: block; width: 100%; height: auto; }
+  .scan { text-align: center; font-weight: 650; margin: 12px 0 2px; font-size: 17px; }
+  .url { text-align: center; color: var(--text-secondary); font-size: 13px; word-break: break-all; }
+  .hero .k { color: var(--text-secondary); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .hero .v { font-size: 64px; font-weight: 700; line-height: 1; margin-top: 6px; font-variant-numeric: tabular-nums; transition: transform .25s; }
+  .hero .v.bump { transform: scale(1.08); }
+
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-content: start; }
+  @media (max-width: 1200px) { .grid { grid-template-columns: 1fr; } }
+  .chart h2 { font-size: 17px; line-height: 1.3; margin: 0 0 2px; }
+  .chart .sub { color: var(--text-muted); font-size: 13px; margin-bottom: 14px; }
+
+  /* horizontal bars */
+  .bar-row { display: grid; grid-template-columns: minmax(120px, 42%) 1fr 76px; align-items: center; gap: 10px; padding: 5px 0; position: relative; }
+  .bar-row .lab { color: var(--text-primary); font-size: 14px; }
+  .bar-row .trk { height: 22px; position: relative; border-left: 1px solid var(--text-muted); }
+  .bar-row .fill { position: absolute; left: 0; top: 2px; bottom: 2px; background: var(--series-1); border-radius: 0 4px 4px 0;
+    transition: width .6s cubic-bezier(.2,.8,.2,1); min-width: 0; }
+  .bar-row .val { text-align: right; font-variant-numeric: tabular-nums; font-size: 14px; color: var(--text-primary); white-space: nowrap; }
+  .bar-row .val b { font-weight: 650; }
+  .bar-row .val span { color: var(--text-muted); margin-left: 4px; }
+  .bar-row:hover .fill { filter: brightness(1.08); }
+
+  /* stacked 100% bars */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; font-size: 13px; color: var(--text-secondary); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .st-row { display: grid; grid-template-columns: 110px 1fr 46px; align-items: center; gap: 10px; padding: 7px 0; }
+  .st-row .lab { font-size: 14px; }
+  .st-row .n { text-align: right; color: var(--text-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .stack { display: flex; gap: 2px; height: 30px; background: var(--track); border-radius: 4px; overflow: hidden; }
+  .seg { height: 100%; display: flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 650;
+    transition: flex-grow .6s cubic-bezier(.2,.8,.2,1); flex-basis: 0; min-width: 0; overflow: hidden; white-space: nowrap; cursor: default; }
+  .seg.yes { background: var(--div-pos); color: #fff; }
+  .seg.somewhat { background: var(--div-mid); color: var(--text-primary); }
+  .seg.no { background: var(--div-neg); color: #fff; }
+  .seg:first-child { border-radius: 4px 0 0 4px; } .seg:last-child { border-radius: 0 4px 4px 0; }
+
+  .others { margin-top: 14px; border-top: 1px solid var(--grid); padding-top: 10px; }
+  .others .k { font-size: 12.5px; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; }
+  .others ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  .others li { background: var(--track); border-radius: 999px; padding: 4px 10px; font-size: 13px; color: var(--text-primary); }
+  .empty { color: var(--text-muted); font-size: 14px; padding: 12px 0; }
+
+  #tip { position: fixed; pointer-events: none; z-index: 10; background: var(--text-primary); color: var(--surface-1);
+    padding: 7px 10px; border-radius: 8px; font-size: 13px; line-height: 1.35; max-width: 260px; opacity: 0; transition: opacity .1s; }
+  #tip.on { opacity: 1; }
+  .tbtn { background: none; border: 1px solid var(--line); color: var(--text-secondary); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+  table.data { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 6px; }
+  table.data th, table.data td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--grid); }
+  table.data td.num, table.data th.num { text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+  <div class="wrap">
+    <aside>
+      <div class="card brand">
+        <div class="live off" id="live"><i></i><span>Connecting…</span></div>
+        <h1>Let us work together</h1>
+        <p>PhD student survey · live results</p>
+      </div>
+      <div class="card">
+        <div class="qr"><img id="qr" src="/qr.svg" alt="QR code linking to the survey"></div>
+        <div class="scan">Scan to answer anonymously</div>
+        <div class="url" id="url"></div>
+      </div>
+      <div class="card hero">
+        <div class="k">Responses</div>
+        <div class="v" id="total">0</div>
+      </div>
+      <button class="tbtn" id="tableToggle" type="button">Show as tables</button>
+    </aside>
+    <section class="grid" id="grid"></section>
+  </div>
+</div>
+<div id="tip" role="tooltip"></div>
+
+<script src="/questions.js"></script>
+<script>
+const grid = document.getElementById("grid");
+const tip = document.getElementById("tip");
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+let tableView = false;
+let last = null;
+
+fetch("/api/url").then((r) => r.json()).then((j) => (document.getElementById("url").textContent = j.url.replace(/^https?:\/\//, "").replace(/\/$/, "")));
+
+// Build the static skeleton once; updates only change widths and numbers so bars animate.
+function skeleton() {
+  grid.innerHTML = QUESTIONS.map((q, i) => {
+    let body = "";
+    if (q.type === "matrix") {
+      body += `<div class="legend">${q.options.map((o) => `<span><i style="background:var(--div-${o.id === "yes" ? "pos" : o.id === "no" ? "neg" : "mid"})"></i>${esc(o.label)}</span>`).join("")}</div>`;
+      body += q.rows.map((r) => `<div class="st-row"><div class="lab">${esc(r.label)}</div><div class="stack" id="${q.id}-${r.id}">${q.options.map((o) => `<div class="seg ${o.id}" data-q="${q.id}" data-r="${r.id}" data-o="${o.id}"></div>`).join("")}</div><div class="n" id="${q.id}-${r.id}-n"></div></div>`).join("");
+    } else {
+      body += q.options.map((o) => `<div class="bar-row" data-q="${q.id}" data-o="${o.id}"><div class="lab">${esc(o.label)}</div><div class="trk"><div class="fill" style="width:0"></div></div><div class="val"></div></div>`).join("");
+      if (q.otherId) body += `<div class="others" id="${q.id}-others" hidden><div class="k">“Other” answers</div><ul></ul></div>`;
+    }
+    return `<article class="card chart"><h2>${i + 1}. ${esc(q.title)}</h2><div class="sub" id="${q.id}-sub"></div><div class="viz" id="${q.id}-viz">${body}</div><div class="tbl" id="${q.id}-tbl" hidden></div></article>`;
+  }).join("");
+}
+
+function update(s) {
+  last = s;
+  const tot = document.getElementById("total");
+  if (tot.textContent !== String(s.total)) { tot.textContent = s.total; tot.classList.add("bump"); setTimeout(() => tot.classList.remove("bump"), 250); }
+
+  for (const q of QUESTIONS) {
+    const d = s.questions[q.id];
+    const sub = document.getElementById(q.id + "-sub");
+    const tbl = document.getElementById(q.id + "-tbl");
+    document.getElementById(q.id + "-viz").hidden = tableView;
+    tbl.hidden = !tableView;
+
+    if (q.type === "matrix") {
+      const ns = q.rows.map((r) => d.rows[r.id].n);
+      sub.textContent = `${Math.max(0, ...ns)} answered · share of answers per area`;
+      let t = `<table class="data"><tr><th>Area</th>${q.options.map((o) => `<th class="num">${esc(o.label)}</th>`).join("")}<th class="num">n</th></tr>`;
+      for (const r of q.rows) {
+        const row = d.rows[r.id];
+        for (const o of q.options) {
+          const el = grid.querySelector(`.seg[data-q="${q.id}"][data-r="${r.id}"][data-o="${o.id}"]`);
+          const c = row.counts[o.id], p = pct(c, row.n);
+          el.style.flexGrow = row.n ? c : (o.id === "somewhat" ? 1 : 0);
+          el.style.display = (row.n ? c : o.id === "somewhat") ? "flex" : "none";
+          el.textContent = row.n && p >= 9 ? p + "%" : "";
+          el.dataset.tip = `<b>${esc(r.label)} · ${esc(o.label)}</b><br>${c} of ${row.n} (${p}%)`;
+        }
+        if (!row.n) grid.querySelector(`.seg[data-q="${q.id}"][data-r="${r.id}"][data-o="somewhat"]`).dataset.tip = "No answers yet";
+        document.getElementById(`${q.id}-${r.id}-n`).textContent = `n=${row.n}`;
+        t += `<tr><td>${esc(r.label)}</td>${q.options.map((o) => `<td class="num">${row.counts[o.id]} (${pct(row.counts[o.id], row.n)}%)</td>`).join("")}<td class="num">${row.n}</td></tr>`;
+      }
+      tbl.innerHTML = t + "</table>";
+    } else {
+      sub.textContent = q.type === "multi"
+        ? `${d.n} answered · % of respondents who picked each (multiple allowed)`
+        : `${d.n} answered · % of respondents`;
+      let t = `<table class="data"><tr><th>Option</th><th class="num">Count</th><th class="num">%</th></tr>`;
+      for (const o of q.options) {
+        const row = grid.querySelector(`.bar-row[data-q="${q.id}"][data-o="${o.id}"]`);
+        const c = d.counts[o.id], p = pct(c, d.n);
+        row.querySelector(".fill").style.width = p + "%";
+        row.querySelector(".val").innerHTML = `<b>${p}%</b><span>${c}</span>`;
+        row.dataset.tip = `<b>${esc(o.label)}</b><br>${c} of ${d.n} respondents (${p}%)`;
+        t += `<tr><td>${esc(o.label)}</td><td class="num">${c}</td><td class="num">${p}%</td></tr>`;
+      }
+      tbl.innerHTML = t + "</table>";
+      if (q.otherId) {
+        const box = document.getElementById(q.id + "-others");
+        const list = d.otherText || [];
+        box.hidden = !list.length;
+        box.querySelector("ul").innerHTML = list.map((x) => `<li>${esc(x)}</li>`).join("");
+      }
+    }
+  }
+}
+
+// Tooltips
+document.addEventListener("pointermove", (e) => {
+  const el = e.target.closest("[data-tip]");
+  if (!el) { tip.classList.remove("on"); return; }
+  tip.innerHTML = el.dataset.tip;
+  tip.classList.add("on");
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + 14, y = e.clientY + 14;
+  if (x + w > innerWidth - 8) x = e.clientX - w - 14;
+  if (y + h > innerHeight - 8) y = e.clientY - h - 14;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+});
+document.addEventListener("pointerleave", () => tip.classList.remove("on"));
+
+document.getElementById("tableToggle").addEventListener("click", (e) => {
+  tableView = !tableView;
+  e.target.textContent = tableView ? "Show as charts" : "Show as tables";
+  if (last) update(last);
+});
+
+// Realtime stream (EventSource reconnects on its own); poll as a backup.
+const live = document.getElementById("live");
+function setLive(on) { live.classList.toggle("off", !on); live.querySelector("span").textContent = on ? "Live" : "Reconnecting…"; }
+function connect() {
+  const es = new EventSource("/events");
+  es.onopen = () => setLive(true);
+  es.onmessage = (m) => { setLive(true); update(JSON.parse(m.data)); };
+  es.onerror = () => setLive(false);
+}
+skeleton();
+fetch("/api/summary").then((r) => r.json()).then(update).catch(() => {});
+connect();
+setInterval(() => fetch("/api/summary").then((r) => r.json()).then(update).catch(() => {}), 15000);
+</script>
+</body>
+</html>
