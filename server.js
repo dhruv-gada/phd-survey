@@ -12,9 +12,14 @@ const ADMIN_PASS = process.env.ADMIN_PASS || "";
 const ADMIN_PATH = "/ad-reimagine-bme";
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 
-// The only shared state is which session is current. Each session's answers download as their own CSV.
+/*
+  Shared state, controlled from the admin page:
+    session  which session answers are saved under (each session downloads as its own CSV)
+    q        index of the question on screen, or -1 while waiting to start
+    summary  true when the projector shows every question's results
+*/
 const newSessionId = () => "s" + Date.now().toString(36);
-const freshState = () => ({ session: newSessionId() });
+const freshState = () => ({ session: newSessionId(), q: -1, summary: false });
 
 // ---------- storage: Postgres when DATABASE_URL is set, else a local JSON file ----------
 let store;
@@ -158,21 +163,30 @@ function summarize(answers) {
 // ---------- realtime push (Server-Sent Events) ----------
 let state = null;
 let results = {};
-const clients = new Set();
+const clients = new Set(); // { res, role }
 let pushTimer = null;
 
 async function refreshResults() {
   results = summarize(await store.answers(state.session));
 }
-const payload = () => ({ session: state.session, results });
+const payload = () => ({
+  state,
+  results,
+  phones: [...clients].filter((c) => c.role === "phone").length,
+});
 function push() {
-  // Coalesce bursts (a whole room answering at once) into one update every 300 ms.
+  // Coalesce bursts (a whole room answering at once) into one update every 250 ms.
   if (pushTimer) return;
   pushTimer = setTimeout(() => {
     pushTimer = null;
     const msg = `data: ${JSON.stringify(payload())}\n\n`;
-    for (const res of clients) res.write(msg);
-  }, 300);
+    for (const c of clients) c.res.write(msg);
+  }, 250);
+}
+async function setState(patch) {
+  state = { ...state, ...patch };
+  await store.setState(state);
+  push();
 }
 const cleanName = (n) => (typeof n === "string" ? n.replace(/\s+/g, " ").trim().slice(0, 80) : "");
 async function defaultSessionName() {
@@ -212,13 +226,16 @@ app.get("/questions.js", (req, res) => res.sendFile(path.join(__dirname, "questi
 app.use("/static", express.static(path.join(__dirname, "public", "static"), { maxAge: "5m" }));
 
 app.get("/events", (req, res) => {
+  const role = req.query.role === "phone" ? "phone" : "screen";
   res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" });
   res.flushHeaders();
   res.write("retry: 2000\n\n");
   res.write(`data: ${JSON.stringify(payload())}\n\n`);
-  clients.add(res);
+  const client = { res, role };
+  clients.add(client);
+  push();
   const ping = setInterval(() => res.write(": ping\n\n"), 20000);
-  req.on("close", () => { clearInterval(ping); clients.delete(res); });
+  req.on("close", () => { clearInterval(ping); clients.delete(client); push(); });
 });
 
 // Which questions this phone has already answered in the current session.
@@ -231,8 +248,10 @@ app.get("/api/me", async (req, res) => {
 app.post("/api/answer", async (req, res) => {
   const dev = deviceId(req, res);
   const { question, answer } = req.body || {};
-  const q = QUESTIONS.find((x) => x.id === question);
-  if (!q) return res.status(400).json({ ok: false, error: "Unknown question." });
+  const q = QUESTIONS[state.q];
+  if (state.summary || !q || q.id !== question) {
+    return res.status(409).json({ ok: false, error: "This question has closed. The next one is on your screen." });
+  }
   const clean = cleanAnswer(q, answer);
   if (!clean) return res.status(400).json({ ok: false, error: "Choose an answer first." });
   try {
@@ -306,6 +325,23 @@ admin.post("/logout", (req, res) => { setAdminCookie(req, res, "", 0); res.json(
 admin.post("/new-session", needAdmin, async (req, res) => {
   await startSession((req.body || {}).name);
   res.json({ ok: true });
+});
+// Move the whole room: next, back, a specific question, the waiting screen, or all results.
+admin.post("/go", needAdmin, async (req, res) => {
+  const { to } = req.body || {};
+  const last = QUESTIONS.length - 1;
+  if (to === "next") {
+    if (state.summary) return res.json({ ok: true, ...payload() });
+    if (state.q >= last) await setState({ summary: true });
+    else await setState({ q: state.q + 1, summary: false });
+  } else if (to === "back") {
+    if (state.summary) await setState({ summary: false, q: last });
+    else await setState({ q: Math.max(-1, state.q - 1) });
+  } else if (to === "summary") await setState({ summary: true });
+  else if (to === "waiting") await setState({ q: -1, summary: false });
+  else if (Number.isInteger(to) && QUESTIONS[to]) await setState({ q: to, summary: false });
+  else return res.status(400).json({ ok: false, error: "Unknown step." });
+  res.json({ ok: true, ...payload() });
 });
 admin.post("/rename-session", needAdmin, async (req, res) => {
   const { session, name } = req.body || {};
@@ -390,7 +426,7 @@ app.use(ADMIN_PATH, admin);
 (async () => {
   await store.init();
   const saved = await store.getState();
-  state = saved && saved.session ? { session: saved.session } : freshState();
+  state = { ...freshState(), ...(saved && saved.session ? { session: saved.session, q: Number.isInteger(saved.q) ? saved.q : -1, summary: !!saved.summary } : {}) };
   await store.setState(state);
   if (!(await store.sessions()).some((x) => x.id === state.session)) await store.addSession(state.session, await defaultSessionName());
   await refreshResults();

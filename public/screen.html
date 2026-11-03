@@ -6,52 +6,109 @@
 <title>Live results · Let us work together</title>
 <link rel="stylesheet" href="/static/base.css">
 <style>
-  body { font-size: clamp(15px, 1.05vw, 22px); }
-  .page { display: grid; grid-template-columns: clamp(200px, 19vw, 360px) 1fr; gap: 4vw; padding: 3vw 3.5vw; min-height: 100vh; }
-  aside { position: sticky; top: 3vw; align-self: start; }
-  aside h1 { font-size: clamp(30px, 2.8vw, 60px); line-height: 1.02; letter-spacing: -0.02em; margin: 0 0 0.9em; font-variation-settings: "opsz" 96; }
+  body { font-size: clamp(15px, 1.1vw, 24px); }
+  h1 { font-weight: 700; letter-spacing: -0.02em; line-height: 1.06; margin: 0; font-variation-settings: "opsz" 96; }
   .qr { background: #fff; }
   .qr img { display: block; width: 100%; height: auto; }
-  .scan { margin: 0.9em 0 0; color: var(--ink-2); line-height: 1.35; }
-  .scan b { display: block; color: var(--ink); font-size: 1.1em; word-break: break-all; }
-  .total { margin-top: 2.2em; }
-  .total b { display: block; font-size: 4.4em; line-height: 0.95; font-weight: 750; font-variant-numeric: tabular-nums; }
-  .total span { color: var(--ink-2); }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3vw 4vw; align-content: start; }
-  .grid h2 { font-size: 1.25em; line-height: 1.25; margin: 0 0 0.3em; max-width: 34ch; }
-  .grid .n { color: var(--ink-2); margin: 0 0 1em; font-size: 0.95em; }
+  .muted { color: var(--ink-2); }
+
+  /* Waiting: the QR code is the whole point */
+  .lobby { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; align-items: center; gap: 6vw; padding: 5vw 6vw; }
+  .lobby h1 { font-size: clamp(44px, 6.4vw, 140px); margin-bottom: 0.3em; }
+  .lobby .lede { font-size: 1.6em; margin: 0 0 1.4em; max-width: 24ch; line-height: 1.3; }
+  .lobby .url { font-size: 1.6em; font-weight: 650; word-break: break-all; }
+  .lobby .joined { margin-top: 2em; font-size: 1.3em; }
+  .lobby .joined b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .lobby .qr { justify-self: end; width: min(38vw, 74vh); }
+
+  /* One question with its live poll */
+  .stage { min-height: 100vh; display: grid; grid-template-columns: 1fr clamp(140px, 12vw, 240px); gap: 5vw; padding: 3.4vw 4vw; }
+  .step { font-size: 1.15em; margin: 0 0 0.7em; }
+  .q-title { font-size: clamp(30px, 3.2vw, 70px); max-width: 26ch; margin-bottom: 1em; }
+  .results { max-width: 70vw; font-size: 1.3em; }
+  .results .res-row { margin-bottom: 0.85em; }
+  .results .res-track { height: 1.2em; }
+  .results .stack { height: 2.3em; }
+  .side { text-align: center; }
+  .side p { margin: 0.8em 0 0; line-height: 1.3; font-size: 0.95em; }
+  .side p b { display: block; color: var(--ink); word-break: break-all; }
+  .count { margin-top: 3em; text-align: left; }
+  .count b { display: block; font-size: 4.6em; line-height: 0.9; font-weight: 750; font-variant-numeric: tabular-nums; }
+
+  /* All results */
+  .summary { padding: 3vw 4vw; }
+  .summary > header { display: flex; justify-content: space-between; align-items: end; gap: 3vw; margin-bottom: 2.6vw; }
+  .summary > header h1 { font-size: clamp(30px, 3vw, 64px); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3vw 5vw; }
+  .grid h2 { font-size: 1.2em; line-height: 1.25; margin: 0 0 0.3em; max-width: 34ch; }
+  .grid .n { margin: 0 0 1em; font-size: 0.95em; }
+
   .offline { position: fixed; right: 16px; bottom: 14px; color: var(--ink-2); font-size: 14px; }
-  @media (max-width: 900px) { .page { grid-template-columns: 1fr; } aside { position: static; max-width: 320px; } .grid { grid-template-columns: 1fr; } }
+  @media (max-width: 800px) {
+    .lobby, .stage, .grid { grid-template-columns: 1fr; } .lobby .qr { justify-self: start; width: 70vw; }
+    .side { display: none; } .results { max-width: none; }
+  }
 </style>
 </head>
 <body>
-<div class="page">
-  <aside>
-    <h1>Let us work together</h1>
-    <div class="qr"><img src="/qr.svg" alt="QR code that opens the survey"></div>
-    <p class="scan">Scan to answer, or go to<b id="url"></b></p>
-    <p class="total"><b id="total">0</b><span id="totalNoun">people have answered</span></p>
-  </aside>
-  <main class="grid" id="grid"></main>
-</div>
+<div id="app"></div>
 <div class="offline" id="offline" hidden>Reconnecting</div>
 
 <script src="/questions.js"></script>
 <script src="/static/shared.js"></script>
 <script>
-const grid = document.getElementById("grid");
-fetch("/api/url").then((r) => r.json()).then((j) => (document.getElementById("url").textContent = j.url.replace(/^https?:\/\//, "").replace(/\/$/, "")));
-grid.innerHTML = QUESTIONS.map((q) => `<section><h2>${esc(q.title)}</h2><p class="n" data-n="${q.id}"></p><div data-res="${q.id}"></div></section>`).join("");
+const app = document.getElementById("app");
+let url = location.host, data = null, viewKey = "";
+fetch("/api/url").then((r) => r.json()).then((j) => { url = j.url.replace(/^https?:\/\//, "").replace(/\/$/, ""); render(true); });
 
-connectLive((d) => {
-  const people = Math.max(0, ...QUESTIONS.map((q) => d.results[q.id].n));
-  document.getElementById("total").textContent = people;
-  document.getElementById("totalNoun").textContent = people === 1 ? "person has answered" : "people have answered";
-  for (const q of QUESTIONS) {
-    grid.querySelector(`[data-n="${q.id}"]`).textContent = answerNoun(d.results[q.id].n);
-    showResults(grid.querySelector(`[data-res="${q.id}"]`), q, d.results[q.id]);
+const qr = () => `<div class="qr"><img src="/qr.svg" alt="QR code that opens the survey"></div>`;
+const people = (n) => (n === 1 ? "person" : "people");
+
+function render(force) {
+  if (!data) return;
+  const s = data.state;
+  const view = s.summary ? "summary" : s.q < 0 ? "lobby" : "q" + s.q;
+  const key = [s.session, view, url].join("|");
+
+  if (key !== viewKey || force) {
+    viewKey = key;
+    if (view === "lobby") {
+      app.innerHTML = `<section class="lobby"><div><h1>Let us work together</h1>` +
+        `<p class="lede muted">Scan the code to answer from your phone. It's anonymous.</p>` +
+        `<div class="url">${esc(url)}</div><p class="joined muted"><b id="joined">0</b> <span id="joinedNoun">phones have joined</span></p></div>${qr()}</section>`;
+    } else if (view === "summary") {
+      app.innerHTML = `<section class="summary"><header><h1>How the room answered</h1><p class="muted" id="people"></p></header><div class="grid">` +
+        QUESTIONS.map((q) => `<section><h2>${esc(q.title)}</h2><p class="n muted" data-n="${q.id}"></p><div data-res="${q.id}"></div></section>`).join("") +
+        `</div></section>`;
+    } else {
+      const q = QUESTIONS[s.q];
+      app.innerHTML = `<section class="stage"><div><p class="step muted">Question ${s.q + 1} of ${QUESTIONS.length}</p>` +
+        `<h1 class="q-title">${esc(q.title)}</h1><div class="results" data-res="${q.id}"></div></div>` +
+        `<aside class="side">${qr()}<p class="muted">Scan to answer<b>${esc(url)}</b></p>` +
+        `<div class="count"><b id="count">0</b><span class="muted" id="countNoun">answers</span></div></aside></section>`;
+    }
   }
-}, (ok) => (document.getElementById("offline").hidden = ok));
+
+  // Live numbers
+  if (view === "lobby") {
+    document.getElementById("joined").textContent = data.phones;
+    document.getElementById("joinedNoun").textContent = data.phones === 1 ? "phone has joined" : "phones have joined";
+  } else if (view === "summary") {
+    const n = Math.max(0, ...QUESTIONS.map((q) => data.results[q.id].n));
+    document.getElementById("people").textContent = `${n} ${people(n)} took part`;
+    for (const q of QUESTIONS) {
+      app.querySelector(`[data-n="${q.id}"]`).textContent = answerNoun(data.results[q.id].n);
+      showResults(app.querySelector(`[data-res="${q.id}"]`), q, data.results[q.id]);
+    }
+  } else {
+    const q = QUESTIONS[s.q], d = data.results[q.id];
+    document.getElementById("count").textContent = d.n;
+    document.getElementById("countNoun").textContent = d.n === 1 ? "answer" : "answers";
+    showResults(app.querySelector(`[data-res="${q.id}"]`), q, d);
+  }
+}
+
+connectLive("screen", (d) => { data = d; render(); }, (ok) => (document.getElementById("offline").hidden = ok));
 </script>
 </body>
 </html>

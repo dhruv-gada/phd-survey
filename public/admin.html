@@ -24,6 +24,14 @@
   button.link { background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; color: var(--ink-2); font-size: 15px; }
   .alert { border-left: 4px solid var(--brick); padding: 10px 14px; background: #fbeeea; margin-bottom: 18px; font-size: 15px; }
 
+  .control { background: var(--ink); color: #fff; border-radius: 12px; padding: 20px; margin-bottom: 14px; }
+  .control .now { font-size: 22px; font-weight: 650; line-height: 1.25; margin: 0 0 4px; }
+  .control .meta { margin: 0 0 16px; color: #b9cbcc; font-variant-numeric: tabular-nums; }
+  .control .go { width: 100%; min-height: 60px; border: 0; border-radius: 8px; background: var(--marigold); color: var(--ink); font-weight: 700; font-size: 19px; cursor: pointer; }
+  .control .go:disabled { opacity: 0.6; cursor: default; }
+  .control .row { display: flex; gap: 8px; margin-top: 8px; }
+  .control .row button { flex: 1; min-height: 44px; border-radius: 8px; border: 1.5px solid #3c5559; background: transparent; color: #fff; font-weight: 600; cursor: pointer; }
+  .control .row button:disabled { opacity: 0.4; cursor: default; }
   .share { background: var(--wash); border-radius: 10px; padding: 18px; }
   .share .url { font-size: 22px; font-weight: 700; word-break: break-all; margin: 2px 0 14px; }
   .share .row { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -65,12 +73,22 @@
     <div class="bar"><h1>Survey admin</h1><button class="link" id="logout" type="button">Sign out</button></div>
     <div class="alert" id="storageAlert" hidden>Responses aren't being saved to the database yet, so they'll be lost if the server restarts. Add <b>DATABASE_URL</b> in Render to fix this.</div>
 
+    <div class="control" aria-live="polite">
+      <p class="now" id="now">Connecting</p>
+      <p class="meta" id="meta"></p>
+      <button class="go" type="button" id="go" disabled>Start question 1</button>
+      <div class="row">
+        <button type="button" id="back">Back</button>
+        <button type="button" id="toQr">Show QR code</button>
+      </div>
+    </div>
+
     <div class="share">
       <p class="muted" style="margin:0">Link to share with students</p>
       <p class="url" id="shareUrl"></p>
       <div class="row">
         <button class="btn primary" type="button" id="copy">Copy link</button>
-        <a class="btn" href="/results" target="_blank" rel="noopener">Open live results</a>
+        <a class="btn" href="/results" target="_blank" rel="noopener">Open projector screen</a>
       </div>
     </div>
 
@@ -89,6 +107,7 @@
   </section>
 </main>
 
+<script src="/questions.js"></script>
 <script src="/static/shared.js"></script>
 <script>
 const base = location.pathname.replace(/\/$/, "");
@@ -165,6 +184,43 @@ $("newForm").addEventListener("submit", (e) => {
   $("newName").value = ""; $("newBox").hidden = true; $("newOpen").hidden = false;
 });
 
+// Live controls
+let live = null;
+function renderControl() {
+  if (!live) return;
+  const s = live.state, total = QUESTIONS.length;
+  const go = $("go"), back = $("back"), toQr = $("toQr");
+  if (s.summary) {
+    $("now").textContent = "All results are on the screen.";
+    $("meta").textContent = "That's the end. Start a new session below for another group.";
+    go.textContent = "Done"; go.disabled = true;
+  } else if (s.q < 0) {
+    $("now").textContent = "The screen is showing the QR code.";
+    $("meta").textContent = `${live.phones} ${live.phones === 1 ? "phone has" : "phones have"} joined.`;
+    go.textContent = "Start question 1"; go.disabled = false;
+  } else {
+    const n = live.results[QUESTIONS[s.q].id].n;
+    $("now").textContent = `Question ${s.q + 1} of ${total} is on the screen.`;
+    $("meta").textContent = `${answerNoun(n)}, ${live.phones} ${live.phones === 1 ? "phone" : "phones"} connected.`;
+    go.textContent = s.q === total - 1 ? "Show all results" : `Next question (${s.q + 2} of ${total})`;
+    go.disabled = false;
+  }
+  back.disabled = s.q < 0 && !s.summary;
+  toQr.disabled = s.q < 0 && !s.summary;
+}
+async function goTo(to) {
+  $("go").disabled = true;
+  try {
+    const r = await fetch(base + "/go", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    live = j; renderControl(); load();
+  } catch (e) { $("err").textContent = e.message || "That didn't work. Check your connection."; $("err").hidden = false; renderControl(); }
+}
+$("go").onclick = () => goTo("next");
+$("back").onclick = () => goTo("back");
+$("toQr").onclick = () => goTo("waiting");
+
 let polling = false;
 async function show() {
   let ok = false;
@@ -172,7 +228,11 @@ async function show() {
   $("login").hidden = ok; $("panel").hidden = !ok;
   if (!ok) { $("u").focus(); return; }
   load();
-  if (!polling) { polling = true; setInterval(() => { if (!editing && !deleting) load(); }, 5000); }
+  if (!polling) {
+    polling = true;
+    setInterval(() => { if (!editing && !deleting) load(); }, 5000);
+    connectLive("screen", (d) => { live = d; renderControl(); });
+  }
 }
 $("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();

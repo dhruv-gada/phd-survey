@@ -2,10 +2,10 @@
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 
-function connectLive(onData, onStatus) {
+function connectLive(role, onData, onStatus) {
   let es;
   const open = () => {
-    es = new EventSource("/events");
+    es = new EventSource("/events?role=" + role);
     es.onopen = () => onStatus && onStatus(true);
     es.onmessage = (m) => {
       const d = JSON.parse(m.data);
@@ -19,25 +19,6 @@ function connectLive(onData, onStatus) {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && es.readyState === EventSource.CLOSED) open();
   });
-}
-
-// Drives a .clock element counting down to state.endsAt (a local timestamp). Returns a stop function.
-function runClock(el, state) {
-  const fill = el.querySelector(".clock-fill");
-  const num = el.querySelector(".clock-num");
-  let raf;
-  const tick = () => {
-    const total = Math.max(1, state.duration * 1000);
-    const left = Math.max(0, state.endsAt - Date.now());
-    fill.style.transform = `scaleX(${left / total})`;
-    const s = Math.ceil(left / 1000);
-    num.textContent = s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : String(s);
-    el.classList.toggle("low", s <= 10);
-    if (left > 0) raf = requestAnimationFrame(tick);
-    else state.onTimeUp && state.onTimeUp();
-  };
-  tick();
-  return () => cancelAnimationFrame(raf);
 }
 
 const MATRIX_COLORS = { yes: "var(--teal)", somewhat: "var(--mid)", no: "var(--brick)" };
