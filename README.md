@@ -14,7 +14,11 @@ A presenter-run live poll. Students scan a QR code and answer anonymously on the
 2. On your phone or laptop, open `/ad-reimagine-bme`, pick a time per question, and press **Start question 1**.
 3. When the timer ends, the question closes on its own and everyone sees the results. **End question now** closes it early, and **Add 15 seconds** gives more time.
 4. Press **Start question 2**, and so on. After the last one, press **Show all results**.
-5. Running it again with a new group? Press **Start a new session**. Every phone can answer again, and earlier answers stay in the CSV.
+5. Running it again with a new group? Press **Start a new session** and give it a name, such as "Cohort B". Every phone can answer again.
+
+## Sessions and CSVs
+
+Each session is stored separately. The presenter page lists every session with its date and number of respondents, and each one has its own **Download CSV** button. The file is named after the session, for example `phd-survey-cohort-b-2026-11-03.csv`. You can also download every session in one file, rename a session, or delete one. Each CSV has one row per phone.
 
 ## One answer per phone
 

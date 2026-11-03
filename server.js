@@ -38,6 +38,21 @@ if (process.env.DATABASE_URL) {
       await pool.query(`CREATE TABLE IF NOT EXISTS answers (
         session TEXT NOT NULL, q TEXT NOT NULL, device TEXT NOT NULL, answer JSONB NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (session, q, device))`);
+      await pool.query("CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+    },
+    async addSession(id, name) {
+      await pool.query("INSERT INTO sessions (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING", [id, name]);
+    },
+    async renameSession(id, name) {
+      await pool.query("UPDATE sessions SET name = $2 WHERE id = $1", [id, name]);
+    },
+    async sessions() {
+      const r = await pool.query("SELECT id, name, created_at FROM sessions ORDER BY created_at DESC");
+      return r.rows.map((x) => ({ id: x.id, name: x.name, createdAt: x.created_at }));
+    },
+    async deleteSession(id) {
+      await pool.query("DELETE FROM answers WHERE session = $1", [id]);
+      await pool.query("DELETE FROM sessions WHERE id = $1", [id]);
     },
     async getState() {
       const r = await pool.query("SELECT data FROM poll_state WHERE id = 1");
@@ -62,12 +77,14 @@ if (process.env.DATABASE_URL) {
     },
     async wipe() {
       await pool.query("DELETE FROM answers");
+      await pool.query("DELETE FROM sessions");
     },
   };
 } else {
   const file = path.join(__dirname, "data", "store.json");
   fs.mkdirSync(path.dirname(file), { recursive: true });
   let db = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : { state: null, answers: [] };
+  db.sessions = db.sessions || [];
   const save = () => fs.writeFileSync(file, JSON.stringify(db));
   store = {
     kind: "file",
@@ -81,7 +98,17 @@ if (process.env.DATABASE_URL) {
       return true;
     },
     async answers(session) { return session ? db.answers.filter((a) => a.session === session) : db.answers; },
-    async wipe() { db.answers = []; save(); },
+    async wipe() { db.answers = []; db.sessions = []; save(); },
+    async addSession(id, name) {
+      if (!db.sessions.some((x) => x.id === id)) { db.sessions.push({ id, name, createdAt: new Date().toISOString() }); save(); }
+    },
+    async renameSession(id, name) { const x = db.sessions.find((x) => x.id === id); if (x) { x.name = name; save(); } },
+    async sessions() { return [...db.sessions].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); },
+    async deleteSession(id) {
+      db.answers = db.answers.filter((a) => a.session !== id);
+      db.sessions = db.sessions.filter((x) => x.id !== id);
+      save();
+    },
   };
 }
 
@@ -170,6 +197,15 @@ function scheduleClose() {
   clearTimeout(closeTimer);
   if (state.phase !== "open" || !state.endsAt) return;
   closeTimer = setTimeout(() => setPhase({ phase: "closed" }).catch(console.error), Math.max(0, state.endsAt - Date.now() + GRACE_MS));
+}
+const cleanName = (n) => (typeof n === "string" ? n.replace(/\s+/g, " ").trim().slice(0, 80) : "");
+async function defaultSessionName() {
+  return "Session " + ((await store.sessions()).length + 1);
+}
+async function startSession(name) {
+  const fresh = { ...freshState(), duration: state ? state.duration : 60 };
+  await store.addSession(fresh.session, cleanName(name) || (await defaultSessionName()));
+  await setPhase(fresh);
 }
 async function setPhase(patch) {
   state = { ...state, ...patch };
@@ -306,7 +342,8 @@ admin.post("/logout", (req, res) => { setAdminCookie(req, res, "", 0); res.json(
 admin.get("/status", needAdmin, async (req, res) => {
   const all = await store.answers();
   const sessions = [...new Set(all.map((a) => a.session))];
-  res.json({ ...payload(), results, storage: store.kind, sessions: sessions.length, totalAnswers: all.length });
+  const meta = (await store.sessions()).find((x) => x.id === state.session);
+  res.json({ ...payload(), results, storage: store.kind, sessionName: meta ? meta.name : "", sessions: sessions.length, totalAnswers: all.length });
 });
 
 admin.post("/control", needAdmin, async (req, res) => {
@@ -337,11 +374,24 @@ admin.post("/control", needAdmin, async (req, res) => {
       await setPhase({ duration: dur });
       break;
     case "new-session":
-      await setPhase({ ...freshState(), duration: state.duration });
+      await startSession(body.name);
       break;
+    case "rename-session": {
+      const n = cleanName(body.name);
+      if (!n) return res.status(400).json({ ok: false, error: "Type a name for the session." });
+      await store.renameSession(body.session || state.session, n);
+      break;
+    }
+    case "delete-session": {
+      if (!body.session) return res.status(400).json({ ok: false, error: "Choose a session to delete." });
+      await store.deleteSession(body.session);
+      if (body.session === state.session) await startSession();
+      else await refreshResults();
+      break;
+    }
     case "delete-all":
       await store.wipe();
-      await setPhase({ ...freshState(), duration: state.duration });
+      await startSession();
       break;
     default:
       return res.status(400).json({ ok: false, error: "Unknown action." });
@@ -349,11 +399,31 @@ admin.post("/control", needAdmin, async (req, res) => {
   res.json({ ok: true, ...payload(), results });
 });
 
-// One row per phone per session. Phones are numbered, never identified.
+// Every session with how many phones answered, newest first.
+admin.get("/sessions", needAdmin, async (req, res) => {
+  const [list, all] = await Promise.all([store.sessions(), store.answers()]);
+  const people = {}, answers = {};
+  for (const a of all) {
+    (people[a.session] = people[a.session] || new Set()).add(a.device);
+    answers[a.session] = (answers[a.session] || 0) + 1;
+  }
+  res.json({
+    current: state.session,
+    sessions: list.map((x) => ({ ...x, respondents: people[x.id] ? people[x.id].size : 0, answers: answers[x.id] || 0 })),
+  });
+});
+
+const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50) || "session";
+
+// One row per phone. ?session=<id> downloads one session; without it, every session in one file.
 admin.get("/export.csv", async (req, res) => {
   if (!isAdmin(req)) return res.status(403).send("Sign in at " + ADMIN_PATH + " to download responses.");
-  const all = await store.answers();
-  const cols = ["session", "respondent", "first_answer_at"];
+  const only = typeof req.query.session === "string" ? req.query.session : "";
+  const sessionList = await store.sessions();
+  const names = Object.fromEntries(sessionList.map((x) => [x.id, x]));
+  if (only && !names[only]) return res.status(404).send("That session doesn't exist.");
+  const all = await store.answers(only || undefined);
+  const cols = ["session", "session_started_at", "respondent", "first_answer_at"];
   for (const q of QUESTIONS) {
     if (q.type === "matrix") q.rows.forEach((r) => cols.push(`${q.id}_${r.id}`));
     else { cols.push(q.id); if (q.otherId) cols.push(q.id + "_other"); }
@@ -371,7 +441,8 @@ admin.get("/export.csv", async (req, res) => {
   const lines = [cols.join(",")];
   for (const p of people.values()) {
     counters[p.session] = (counters[p.session] || 0) + 1;
-    const vals = [p.session, counters[p.session], new Date(p.at).toISOString()];
+    const meta = names[p.session];
+    const vals = [meta ? meta.name : p.session, meta ? new Date(meta.createdAt).toISOString() : "", counters[p.session], new Date(p.at).toISOString()];
     for (const q of QUESTIONS) {
       const a = p.ans[q.id];
       if (q.type === "matrix") q.rows.forEach((r) => vals.push(a?.rows?.[r.id] ?? ""));
@@ -382,7 +453,13 @@ admin.get("/export.csv", async (req, res) => {
     }
     lines.push(vals.map(esc).join(","));
   }
-  res.type("text/csv").set("Content-Disposition", 'attachment; filename="phd-survey-responses.csv"').send(lines.join("\n"));
+  let filename = "phd-survey-all-sessions.csv";
+  if (only) {
+    const m = names[only];
+    filename = `phd-survey-${slug(m.name)}-${new Date(m.createdAt).toISOString().slice(0, 10)}.csv`;
+  }
+  // Byte-order mark so Excel reads accents and quotes correctly.
+  res.type("text/csv").set("Content-Disposition", `attachment; filename="${filename}"`).send("\ufeff" + lines.join("\n"));
 });
 app.use(ADMIN_PATH, admin);
 
@@ -392,6 +469,7 @@ app.use(ADMIN_PATH, admin);
   if (state.phase === "open" && state.endsAt && Date.now() > state.endsAt + GRACE_MS) state.phase = "closed";
   if (state.phase !== "open") state.endsAt = null;
   await store.setState(state);
+  if (!(await store.sessions()).some((x) => x.id === state.session)) await store.addSession(state.session, await defaultSessionName());
   await refreshResults();
   scheduleClose();
   app.listen(PORT, () => console.log(`Poll running on port ${PORT} (storage: ${store.kind})`));

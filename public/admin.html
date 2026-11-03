@@ -52,6 +52,22 @@
   .confirm p { margin: 0 0 10px; }
   .confirm .row { display: flex; gap: 8px; }
   .note { font-size: 14px; color: var(--ink-2); margin: 4px 0 0; }
+  .session-name { font-size: 15px; color: var(--ink-2); margin: 0 0 10px; }
+  .session-name b { color: var(--ink); }
+  .newform { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 0; }
+  .newform input { flex: 1 1 220px; }
+  ul.sessions { list-style: none; margin: 0; padding: 0; }
+  ul.sessions li { padding: 14px 0; border-top: 1px solid var(--rule); }
+  ul.sessions li:last-child { border-bottom: 1px solid var(--rule); }
+  .s-top { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+  .s-name { font-weight: 650; line-height: 1.3; }
+  .s-now { display: inline-block; margin-left: 8px; font-size: 13px; font-weight: 600; color: var(--teal); }
+  .s-meta { color: var(--ink-2); font-size: 14px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .s-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .s-actions .btn, .s-edit .btn { min-height: 40px; padding: 0 14px; font-size: 15px; }
+  .s-edit { display: flex; gap: 6px; margin-top: 10px; }
+  .s-edit input { flex: 1; min-width: 0; padding: 9px 12px; }
+  .s-confirm { margin-top: 10px; }
   .alert { border-left: 4px solid var(--brick); padding: 10px 14px; background: #fbeeea; margin-bottom: 18px; font-size: 15px; }
 </style>
 </head>
@@ -78,6 +94,7 @@
     <div class="alert" id="storageAlert" hidden>Responses aren't being saved to the database yet. They will be lost if the server restarts. Add <b>DATABASE_URL</b> in Render to fix this.</div>
 
     <div class="now" aria-live="polite">
+      <p class="session-name" id="sessionName"></p>
       <p class="status" id="status"></p>
       <p class="meta" id="meta"></p>
       <div class="clock" id="clock" hidden><div class="clock-track"><div class="clock-fill"></div></div><div class="clock-num"></div></div>
@@ -91,18 +108,24 @@
     <h2>Questions</h2>
     <ol class="qs" id="qs"></ol>
 
-    <h2>Responses</h2>
-    <div class="stack-btns">
-      <a class="btn" href="export.csv" id="csv">Download responses (CSV)</a>
-      <button class="btn" type="button" data-confirm="new">Start a new session</button>
-      <div class="confirm" id="confirm-new" hidden>
-        <p>Start a new session? The screen goes back to the start and every phone can answer again. Answers so far stay in the CSV.</p>
-        <div class="row"><button class="btn primary" data-act="new-session">Start new session</button><button class="btn" data-cancel>Cancel</button></div>
-      </div>
-      <button class="btn warn" type="button" data-confirm="wipe">Delete all responses</button>
+    <h2>Sessions</h2>
+    <p class="note" style="margin:0 0 12px">Each group you run is its own session with its own CSV. Starting a new session resets the screen so every phone can answer again.</p>
+    <button class="btn wide" type="button" data-confirm="new">Start a new session</button>
+    <div class="confirm" id="confirm-new" hidden style="margin-top:8px">
+      <p>The screen goes back to the QR code and the current session is saved as it is.</p>
+      <form class="newform" id="newForm">
+        <input class="f" id="newName" maxlength="80" placeholder="Name, for example Cohort A (optional)" aria-label="Session name">
+        <button class="btn primary" type="submit">Start session</button>
+        <button class="btn" type="button" data-cancel>Cancel</button>
+      </form>
+    </div>
+    <ul class="sessions" id="sessions" style="margin-top:14px"></ul>
+    <div class="stack-btns" style="margin-top:16px">
+      <a class="btn" href="export.csv" id="csvAll">Download every session in one CSV</a>
+      <button class="btn warn" type="button" data-confirm="wipe">Delete all sessions</button>
       <div class="confirm" id="confirm-wipe" hidden>
-        <p>Delete every response from every session? This can't be undone, so download the CSV first if you need it.</p>
-        <div class="row"><button class="btn warn" data-act="delete-all">Delete all responses</button><button class="btn" data-cancel>Cancel</button></div>
+        <p>Delete every session and all its answers? This can't be undone, so download the CSVs first if you need them.</p>
+        <div class="row"><button class="btn warn" data-act="delete-all">Delete all sessions</button><button class="btn" data-cancel>Cancel</button></div>
       </div>
     </div>
   </section>
@@ -113,7 +136,8 @@
 <script>
 const base = location.pathname.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
-$("csv").href = base + "/export.csv";
+$("csvAll").href = base + "/export.csv";
+let sessions = [], editing = null, confirmDelete = null;
 const DURATIONS = [30, 45, 60, 90, 120];
 let data = null, status = null, stopClock = null, lastClockKey = "", started = false;
 const clockState = {};
@@ -125,7 +149,7 @@ async function call(action, extra = {}) {
     const j = await r.json();
     if (!j.ok) throw new Error(j.error);
     data = j; status = { ...(status || {}), results: j.results }; render();
-    refreshStatus();
+    refreshStatus(); loadSessions();
   } catch (e) {
     $("ctlErr").textContent = e.message || "That didn't work. Check your connection."; $("ctlErr").hidden = false;
     if (/Sign in/.test(e.message)) show();
@@ -137,6 +161,39 @@ async function refreshStatus() {
     if (r.status === 403) return show();
     status = await r.json(); render();
   } catch {}
+}
+
+async function loadSessions() {
+  try {
+    const r = await fetch(base + "/sessions", { cache: "no-store" });
+    if (!r.ok) return;
+    const j = await r.json();
+    sessions = j.sessions; renderSessions(j.current);
+  } catch {}
+}
+const fmtDate = (d) => new Date(d).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const people = (n) => (n === 1 ? "1 person" : `${n} people`);
+let currentId = null;
+function renderSessions(current) {
+  if (current) currentId = current;
+  const cur = sessions.find((x) => x.id === currentId);
+  $("sessionName").innerHTML = cur ? `Session: <b>${esc(cur.name)}</b>` : "";
+  $("sessions").innerHTML = sessions.map((x) => {
+    const isNow = x.id === currentId;
+    let h = `<li><div class="s-top"><div><div class="s-name">${esc(x.name)}${isNow ? `<span class="s-now">Running now</span>` : ""}</div>` +
+      `<div class="s-meta">Started ${fmtDate(x.createdAt)}. ${people(x.respondents)}, ${answerNoun(x.answers)}.</div></div></div>`;
+    if (editing === x.id) {
+      h += `<form class="s-edit" data-rename="${x.id}"><input class="f" name="n" maxlength="80" value="${esc(x.name)}" aria-label="Session name"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-edit-cancel>Cancel</button></form>`;
+    } else if (confirmDelete === x.id) {
+      h += `<div class="confirm s-confirm"><p>Delete “${esc(x.name)}” and its ${answerNoun(x.answers)}? This can't be undone.</p>` +
+        `<div class="row"><button class="btn warn" data-del="${x.id}">Delete session</button><button class="btn" data-del-cancel>Cancel</button></div></div>`;
+    } else {
+      h += `<div class="s-actions"><a class="btn" href="${base}/export.csv?session=${encodeURIComponent(x.id)}">Download CSV</a>` +
+        `<button class="btn" type="button" data-edit="${x.id}">Rename</button>` +
+        `<button class="btn warn" type="button" data-ask-del="${x.id}">Delete</button></div>`;
+    }
+    return h + `</li>`;
+  }).join("");
 }
 
 function countFor(q) {
@@ -199,6 +256,24 @@ document.addEventListener("click", (e) => {
   else if (t.dataset.dur) call("duration", { duration: Number(t.dataset.dur) });
   else if (t.dataset.confirm) $("confirm-" + t.dataset.confirm).hidden = false;
   else if (t.hasAttribute("data-cancel")) t.closest(".confirm").hidden = true;
+  else if (t.dataset.edit) { editing = t.dataset.edit; confirmDelete = null; renderSessions(); $("sessions").querySelector("input").select(); }
+  else if (t.hasAttribute("data-edit-cancel")) { editing = null; renderSessions(); }
+  else if (t.dataset.askDel) { confirmDelete = t.dataset.askDel; editing = null; renderSessions(); }
+  else if (t.hasAttribute("data-del-cancel")) { confirmDelete = null; renderSessions(); }
+  else if (t.dataset.del) { confirmDelete = null; call("delete-session", { session: t.dataset.del }); }
+});
+document.addEventListener("submit", (e) => {
+  const f = e.target.closest("form[data-rename]");
+  if (!f) return;
+  e.preventDefault();
+  editing = null;
+  call("rename-session", { session: f.dataset.rename, name: f.elements.n.value });
+});
+$("newForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  call("new-session", { name: $("newName").value });
+  $("newName").value = "";
+  $("confirm-new").hidden = true;
 });
 
 async function show() {
@@ -206,11 +281,12 @@ async function show() {
   try { ok = (await (await fetch(base + "/me", { cache: "no-store" })).json()).admin; } catch {}
   $("login").hidden = ok; $("panel").hidden = !ok;
   if (!ok) { $("u").focus(); return; }
-  refreshStatus();
+  refreshStatus(); loadSessions();
   if (!started) {
     started = true;
     connectLive("screen", (d) => { data = d; render(); });
     setInterval(refreshStatus, 4000);
+    setInterval(() => { if (!editing && !confirmDelete) loadSessions(); }, 8000);
   }
 }
 
