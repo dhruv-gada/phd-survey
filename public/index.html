@@ -3,175 +3,206 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Let us work together · PhD student survey</title>
+<meta name="theme-color" content="#ffffff">
+<title>PhD student survey</title>
+<link rel="stylesheet" href="/static/base.css">
 <style>
-  :root {
-    --bg: #f6f5f1; --card: #ffffff; --ink: #1b1b19; --muted: #5d5c57; --line: #e2e0d8;
-    --accent: #2a78d6; --accent-ink: #ffffff; --accent-soft: #e6f0fc; --error: #c43b3b;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #141413; --card: #1f1f1d; --ink: #f0efec; --muted: #b5b4ab; --line: #34342f;
-      --accent: #3987e5; --accent-soft: #1d2e44; --error: #e66767; }
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink);
-    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
-  main { max-width: 560px; margin: 0 auto; padding: 28px 16px 64px; }
-  header h1 { font-size: 28px; line-height: 1.15; margin: 0 0 6px; letter-spacing: -0.01em; }
-  header p { margin: 0 0 22px; color: var(--muted); }
-  .badge { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted);
-    background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; margin-bottom: 14px; }
-  fieldset { border: 1px solid var(--line); background: var(--card); border-radius: 14px; margin: 0 0 14px; padding: 18px 16px 14px; }
-  legend { float: left; width: 100%; padding: 0; margin-bottom: 4px; font-weight: 650; font-size: 17px; line-height: 1.3; }
-  legend .num { color: var(--accent); margin-right: 4px; }
-  .hint { clear: both; color: var(--muted); font-size: 14px; margin: 0 0 12px; }
-  .opt { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1.5px solid var(--line);
-    border-radius: 10px; margin-bottom: 8px; cursor: pointer; user-select: none; transition: border-color .12s, background .12s; min-height: 48px; }
+  main { max-width: 560px; margin: 0 auto; padding: 18px 20px 120px; min-height: 100svh; }
+  .top { position: sticky; top: 0; z-index: 2; background: var(--paper); padding: 14px 0 12px; margin: -18px 0 8px; }
+  .step { color: var(--ink-2); font-size: 15px; margin-bottom: 8px; display: flex; justify-content: space-between; }
+  h1 { font-size: 27px; line-height: 1.18; font-weight: 700; letter-spacing: -0.012em; margin: 6px 0 6px; font-variation-settings: "opsz" 48; }
+  .hint { color: var(--ink-2); margin: 0 0 20px; font-size: 15px; }
+
+  .opt { position: relative; display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin-bottom: 8px; min-height: 54px;
+    border: 1.5px solid var(--rule); border-radius: 8px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .opt input { position: absolute; opacity: 0; pointer-events: none; }
-  .opt .mark { flex: 0 0 20px; height: 20px; border: 2px solid var(--muted); display: grid; place-items: center; }
-  .opt.radio .mark { border-radius: 50%; }
-  .opt.check .mark { border-radius: 5px; }
-  .opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
-  .opt:has(input:checked) .mark { border-color: var(--accent); background: var(--accent); }
-  .opt.radio:has(input:checked) .mark::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-ink); }
-  .opt.check:has(input:checked) .mark::after { content: ""; width: 5px; height: 10px; border: solid var(--accent-ink);
-    border-width: 0 2.5px 2.5px 0; transform: translateY(-1px) rotate(45deg); }
-  .opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .other-text { width: 100%; margin: 2px 0 8px; padding: 12px 14px; font: inherit; color: var(--ink); background: var(--bg);
-    border: 1.5px solid var(--line); border-radius: 10px; }
-  .other-text:focus { outline: none; border-color: var(--accent); }
-  .mrow { padding: 10px 0; border-top: 1px solid var(--line); }
-  .mrow:first-of-type { border-top: 0; padding-top: 0; }
-  .mrow .rl { font-weight: 550; margin-bottom: 8px; }
+  .mark { flex: 0 0 22px; height: 22px; border: 2px solid var(--ink-2); display: grid; place-items: center; background: var(--paper); }
+  .single .mark { border-radius: 50%; }
+  .multi .mark { border-radius: 4px; }
+  .opt:has(input:checked) { border-color: var(--teal); background: var(--teal-soft); }
+  .opt:has(input:checked) .mark { border-color: var(--teal); background: var(--teal); }
+  .single .opt:has(input:checked) .mark::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+  .multi .opt:has(input:checked) .mark::after { content: ""; width: 6px; height: 11px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: translateY(-1px) rotate(45deg); }
+  .opt:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .other { width: 100%; margin: 0 0 8px; padding: 13px 16px; font: inherit; border: 1.5px solid var(--rule); border-radius: 8px; background: var(--wash); color: var(--ink); }
+  .other:focus { outline: none; border-color: var(--teal); background: var(--paper); }
+
+  .mrow { margin-bottom: 18px; }
+  .mrow > div:first-child { font-weight: 600; margin-bottom: 8px; }
   .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .seg label { position: relative; text-align: center; padding: 11px 6px; border: 1.5px solid var(--line); border-radius: 10px;
-    cursor: pointer; font-weight: 550; min-height: 46px; display: grid; place-items: center; }
+  .seg label { position: relative; display: grid; place-items: center; min-height: 50px; border: 1.5px solid var(--rule); border-radius: 8px; cursor: pointer; font-weight: 500; -webkit-tap-highlight-color: transparent; }
   .seg input { position: absolute; opacity: 0; pointer-events: none; }
-  .seg label:has(input:checked) { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
-  .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-  button.primary { width: 100%; padding: 15px; font: inherit; font-weight: 650; font-size: 17px; border: 0; border-radius: 12px;
-    background: var(--accent); color: var(--accent-ink); cursor: pointer; margin-top: 6px; }
-  button.primary:disabled { opacity: .6; cursor: default; }
-  .error { color: var(--error); font-weight: 550; min-height: 1.4em; margin: 10px 2px 0; }
-  .done { text-align: center; padding: 48px 12px; }
-  .done .tick { width: 64px; height: 64px; border-radius: 50%; background: var(--accent); margin: 0 auto 18px; display: grid; place-items: center; }
-  .done h2 { margin: 0 0 8px; font-size: 24px; }
-  .done p { color: var(--muted); margin: 0 0 22px; }
-  a.link { color: var(--accent); font-weight: 600; }
-  .ghost { background: none; border: 0; color: var(--muted); font: inherit; text-decoration: underline; cursor: pointer; margin-top: 14px; }
-  [hidden] { display: none !important; }
+  .seg label:has(input:checked) { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+  .seg label:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+  .send-bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: var(--paper); border-top: 1px solid var(--rule); }
+  .send-bar > div { max-width: 520px; margin: 0 auto; }
+  .send { display: block; width: 100%; min-height: 54px; border: 0; border-radius: 8px; background: var(--ink); color: #fff; font-weight: 650; font-size: 18px; cursor: pointer; }
+  .send:disabled { background: var(--wash); color: var(--ink-2); cursor: default; }
+  .err { color: var(--brick); font-weight: 550; margin: 8px 0 0; font-size: 15px; }
+
+  .notice { padding: 56px 0 0; }
+  .notice h1 { font-size: 34px; margin-bottom: 10px; }
+  .notice p { color: var(--ink-2); margin: 0 0 8px; font-size: 18px; max-width: 32ch; }
+  .sent-mark { width: 52px; height: 52px; border-radius: 50%; background: var(--teal); display: grid; place-items: center; margin-bottom: 22px; }
+  .sent-mark svg { width: 26px; height: 26px; }
+  .results { margin-top: 22px; }
+  .tag { display: inline-block; color: var(--ink-2); font-size: 15px; margin: 0 0 4px; }
+  .end-q { padding: 26px 0 8px; border-top: 1px solid var(--rule); margin-top: 26px; }
+  .end-q h2 { font-size: 19px; line-height: 1.25; margin: 0 0 14px; }
+
+  .offline { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 8px 14px; border-radius: 6px; font-size: 14px; }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <div class="badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Anonymous · no names or emails collected</div>
-    <h1>Let us work together</h1>
-    <p>Four quick questions about your PhD goals. About one minute.</p>
-  </header>
-
-  <form id="form" novalidate></form>
-
-  <section id="done" class="done" hidden>
-    <div class="tick"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
-    <h2>Thank you!</h2>
-    <p>Your answers were recorded anonymously.</p>
-    <a class="link" href="/results">See live results →</a><br>
-    <button class="ghost" id="again" type="button">Submit another response</button>
-  </section>
-</main>
+<main id="app" aria-live="polite"></main>
+<div class="offline" id="offline" hidden>Reconnecting</div>
 
 <script src="/questions.js"></script>
+<script src="/static/shared.js"></script>
 <script>
-const form = document.getElementById("form");
-const done = document.getElementById("done");
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const app = document.getElementById("app");
+let data = null;          // latest payload from the server
+let mine = new Set();     // question ids this phone has answered in this session
+let mineSession = null;
+let viewKey = "";
+let stopClock = null;
+const clockState = {};
 
-function render() {
-  let html = "";
-  QUESTIONS.forEach((q, i) => {
-    html += `<fieldset><legend><span class="num">${i + 1}.</span>${esc(q.title)}</legend><p class="hint">${esc(q.hint)}</p>`;
-    if (q.type === "single" || q.type === "multi") {
-      const t = q.type === "single" ? "radio" : "checkbox";
-      for (const o of q.options) {
-        html += `<label class="opt ${q.type === "single" ? "radio" : "check"}"><input type="${t}" name="${q.id}" value="${o.id}"><span class="mark"></span><span>${esc(o.label)}</span></label>`;
-        if (q.otherId === o.id) html += `<input class="other-text" id="${q.id}_other" maxlength="200" placeholder="Tell us more (optional)" hidden>`;
-      }
-    } else if (q.type === "matrix") {
-      for (const r of q.rows) {
-        html += `<div class="mrow"><div class="rl">${esc(r.label)}</div><div class="seg">`;
-        for (const o of q.options) html += `<label><input type="radio" name="${q.id}.${r.id}" value="${o.id}">${esc(o.label)}</label>`;
-        html += `</div></div>`;
-      }
-    }
-    html += `</fieldset>`;
-  });
-  html += `<button class="primary" type="submit">Submit anonymously</button><p class="error" id="err" role="alert"></p>`;
-  form.innerHTML = html;
-
-  for (const q of QUESTIONS) {
-    if (!q.otherId) continue;
-    const box = document.getElementById(q.id + "_other");
-    form.querySelectorAll(`input[name="${q.id}"]`).forEach((el) =>
-      el.addEventListener("change", () => {
-        box.hidden = !(el.value === q.otherId && el.checked);
-        if (!box.hidden) box.focus();
-      })
-    );
-  }
-}
-
-function collect() {
-  const body = {};
-  for (const q of QUESTIONS) {
-    if (q.type === "single") {
-      const el = form.querySelector(`input[name="${q.id}"]:checked`);
-      if (el) body[q.id] = el.value;
-      if (q.otherId && body[q.id] === q.otherId) body[q.id + "_other"] = document.getElementById(q.id + "_other").value;
-    } else if (q.type === "multi") {
-      const v = [...form.querySelectorAll(`input[name="${q.id}"]:checked`)].map((e) => e.value);
-      if (v.length) body[q.id] = v;
-    } else if (q.type === "matrix") {
-      const m = {};
-      for (const r of q.rows) {
-        const el = form.querySelector(`input[name="${q.id}.${r.id}"]:checked`);
-        if (el) m[r.id] = el.value;
-      }
-      if (Object.keys(m).length) body[q.id] = m;
-    }
-  }
-  return body;
-}
-
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const err = document.getElementById("err");
-  const btn = form.querySelector("button.primary");
-  const body = collect();
-  if (!Object.keys(body).length) { err.textContent = "Please answer at least one question."; return; }
-  err.textContent = "";
-  btn.disabled = true; btn.textContent = "Submitting…";
+async function loadMine() {
   try {
-    const r = await fetch("/api/submit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    const j = await r.json();
-    if (!j.ok) throw new Error(j.error || "Something went wrong.");
-    try { localStorage.setItem("phd-survey-done", "1"); } catch {}
-    showDone();
-  } catch (x) {
-    err.textContent = x.message || "Network error. Please try again.";
-  } finally {
-    btn.disabled = false; btn.textContent = "Submit anonymously";
+    const j = await (await fetch("/api/me", { cache: "no-store" })).json();
+    mine = new Set(j.answered); mineSession = j.session;
+  } catch {}
+}
+
+function header(qi, withClock) {
+  return `<div class="top"><div class="step"><span>Question ${qi + 1} of ${QUESTIONS.length}</span></div>` +
+    (withClock ? `<div class="clock" id="clock"><div class="clock-track"><div class="clock-fill"></div></div><div class="clock-num"></div></div>` : "") +
+    `</div>`;
+}
+
+function questionForm(q) {
+  let h = `<h1>${esc(q.title)}</h1><p class="hint">${esc(q.hint)}</p><form id="form" class="${q.type}" novalidate>`;
+  if (q.type === "matrix") {
+    for (const r of q.rows) {
+      h += `<div class="mrow" role="radiogroup" aria-label="${esc(r.label)}"><div>${esc(r.label)}</div><div class="seg">`;
+      for (const o of q.options) h += `<label><input type="radio" name="${r.id}" value="${o.id}">${esc(o.label)}</label>`;
+      h += `</div></div>`;
+    }
+  } else {
+    const type = q.type === "single" ? "radio" : "checkbox";
+    for (const o of q.options) {
+      h += `<label class="opt"><input type="${type}" name="a" value="${o.id}"><span class="mark"></span><span>${esc(o.label)}</span></label>`;
+      if (o.id === q.otherId) h += `<input class="other" id="other" maxlength="200" placeholder="What path? (optional)" aria-label="Other path" hidden>`;
+    }
   }
-});
+  h += `</form><div class="send-bar"><div><button class="send" id="send" type="button" disabled>Choose an answer</button><p class="err" id="err" hidden></p></div></div>`;
+  return h;
+}
 
-function showDone() { form.hidden = true; done.hidden = false; window.scrollTo(0, 0); }
-document.getElementById("again").addEventListener("click", () => {
-  try { localStorage.removeItem("phd-survey-done"); } catch {}
-  render(); form.hidden = false; done.hidden = true; window.scrollTo(0, 0);
-});
+function readAnswer(q, form) {
+  if (q.type === "single") {
+    const el = form.querySelector("input[name=a]:checked");
+    if (!el) return null;
+    const a = { choice: el.value };
+    if (el.value === q.otherId) a.other = document.getElementById("other").value;
+    return a;
+  }
+  if (q.type === "multi") {
+    const v = [...form.querySelectorAll("input[name=a]:checked")].map((e) => e.value);
+    return v.length ? { choices: v } : null;
+  }
+  const rows = {};
+  for (const r of q.rows) {
+    const el = form.querySelector(`input[name="${r.id}"]:checked`);
+    if (el) rows[r.id] = el.value;
+  }
+  return Object.keys(rows).length === q.rows.length ? { rows } : null;
+}
 
-render();
-try { if (localStorage.getItem("phd-survey-done")) showDone(); } catch {}
+function wireForm(q) {
+  const form = document.getElementById("form");
+  const send = document.getElementById("send");
+  const err = document.getElementById("err");
+  const other = document.getElementById("other");
+  const sync = () => {
+    const a = readAnswer(q, form);
+    send.disabled = !a;
+    if (a) send.textContent = "Send answer";
+    else if (q.type === "matrix") {
+      const done = q.rows.filter((r) => form.querySelector(`input[name="${r.id}"]:checked`)).length;
+      send.textContent = `Answer all ${q.rows.length} areas (${done} of ${q.rows.length})`;
+    } else send.textContent = q.type === "multi" ? "Choose at least one" : "Choose an answer";
+    if (other) other.hidden = !form.querySelector(`input[value="${q.otherId}"]:checked`);
+  };
+  form.addEventListener("change", sync);
+  send.addEventListener("click", async () => {
+    const a = readAnswer(q, form);
+    if (!a) return;
+    send.disabled = true; send.textContent = "Sending"; err.hidden = true;
+    try {
+      const r = await fetch("/api/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q.id, answer: a }) });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error);
+      mine.add(q.id);
+      render(true);
+    } catch (e) {
+      err.textContent = e.message || "Your answer was not sent. Check your connection and try again.";
+      err.hidden = false;
+      sync();
+    }
+  });
+}
+
+function render(force) {
+  if (!data) return;
+  const s = data.state;
+  if (s.session !== mineSession) { mineSession = s.session; mine = new Set(); loadMine().then(() => render(true)); }
+  const q = QUESTIONS[s.q];
+  const answered = q && mine.has(q.id);
+  const timeLeft = s.endsAt ? s.endsAt - serverNow() : 0;
+  let view = s.phase;
+  if (s.phase === "open") view = answered ? "sent" : timeLeft <= 0 ? "timeup" : "ask";
+  // Only results views depend on incoming numbers; others redraw only when the view itself changes.
+  const key = [s.session, view, s.q, view === "closed" || view === "ended" ? JSON.stringify(data.results) : ""].join("|");
+  Object.assign(clockState, s);
+  if (key === viewKey && !force) return;
+  viewKey = key;
+  if (stopClock) { stopClock(); stopClock = null; }
+
+  if (view === "lobby") {
+    app.innerHTML = `<section class="notice"><h1>You're in.</h1><p>Questions appear here one at a time once the session starts. Keep this page open.</p><p>No names or emails are collected.</p></section>`;
+  } else if (view === "ask") {
+    app.innerHTML = header(s.q, true) + questionForm(q);
+    wireForm(q);
+  } else if (view === "sent" || view === "timeup") {
+    app.innerHTML = header(s.q, true) + `<section class="notice" style="padding-top:28px">` +
+      (view === "sent"
+        ? `<div class="sent-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div><h1>Answer sent.</h1><p>Results show here when time runs out.</p>`
+        : `<h1>Time's up.</h1><p>Results show here in a moment.</p>`) + `</section>`;
+  } else if (view === "closed") {
+    app.innerHTML = header(s.q, false) +
+      `<h1>${esc(q.title)}</h1><p class="hint">${answerNoun(data.results[q.id].n)}${answered ? "" : ". You didn't answer this one."}</p>` +
+      `<div class="results" id="res">${resultsHTML(q, data.results[q.id])}</div>` +
+      `<p class="hint" style="margin-top:28px">${s.q < QUESTIONS.length - 1 ? "The next question will appear here." : "That was the last question."}</p>`;
+    growBars(app);
+  } else if (view === "ended") {
+    app.innerHTML = `<section class="notice" style="padding-top:28px"><h1>Thank you.</h1><p>Here's how everyone answered.</p></section>` +
+      QUESTIONS.map((x) => `<section class="end-q"><h2>${esc(x.title)}</h2>${resultsHTML(x, data.results[x.id])}</section>`).join("");
+    growBars(app);
+  }
+
+  const clock = document.getElementById("clock");
+  if (clock && s.phase === "open") {
+    stopClock = runClock(clock, clockState);
+    clock.addEventListener("timeup", () => { if (view === "ask") render(true); });
+  }
+}
+
+loadMine().then(() => {
+  connectLive("phone", (d) => { data = d; render(); }, (ok) => (document.getElementById("offline").hidden = ok));
+});
 </script>
 </body>
 </html>
