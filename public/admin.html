@@ -3,41 +3,104 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
 <title>Admin · PhD survey</title>
 <style>
-  body { font: 16px/1.5 system-ui, sans-serif; max-width: 520px; margin: 40px auto; padding: 0 16px; color: #1b1b19; }
-  a, button { font: inherit; }
-  .btn { display: inline-block; padding: 10px 16px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; text-decoration: none; color: inherit; margin: 6px 6px 0 0; }
-  .danger { border-color: #d03b3b; color: #d03b3b; }
-  #confirm { margin-top: 14px; padding: 14px; border: 1px solid #d03b3b; border-radius: 10px; }
-  [hidden] { display: none; }
+  :root { --bg:#f6f5f1; --card:#fff; --ink:#1b1b19; --muted:#5d5c57; --line:#e2e0d8; --accent:#2a78d6; --danger:#c43b3b; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141413; --card:#1f1f1d; --ink:#f0efec; --muted:#b5b4ab; --line:#34342f; --accent:#3987e5; --danger:#e66767; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:440px; margin:56px auto; padding:0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:24px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 20px; }
+  label { display:block; font-weight:600; font-size:14px; margin:12px 0 6px; }
+  input { width:100%; padding:12px 14px; font:inherit; color:var(--ink); background:var(--bg); border:1.5px solid var(--line); border-radius:10px; }
+  input:focus { outline:none; border-color:var(--accent); }
+  .btn { display:block; width:100%; text-align:center; padding:12px 16px; border-radius:10px; border:1.5px solid var(--line); background:var(--card);
+    color:var(--ink); font:inherit; font-weight:600; cursor:pointer; text-decoration:none; margin-top:10px; }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; margin-top:20px; }
+  .btn.danger { border-color:var(--danger); color:var(--danger); }
+  .btn:disabled { opacity:.6; cursor:default; }
+  .err { color:var(--danger); font-weight:550; min-height:1.4em; margin:10px 0 0; }
+  .count { font-size:44px; font-weight:700; line-height:1; margin:4px 0 2px; font-variant-numeric:tabular-nums; }
+  .confirm { margin-top:12px; padding:14px; border:1.5px solid var(--danger); border-radius:10px; }
+  .confirm p { margin:0 0 4px; }
+  .row { display:flex; gap:8px; } .row .btn { flex:1; }
+  .link { background:none; border:0; color:var(--muted); text-decoration:underline; font:inherit; cursor:pointer; margin-top:16px; padding:0; }
+  [hidden] { display:none !important; }
 </style>
 </head>
 <body>
-<h1>Survey admin</h1>
-<p id="count">Loading…</p>
-<a class="btn" id="csv" href="#">Download responses (CSV)</a>
-<a class="btn" href="/results">Open live results</a>
-<button class="btn danger" id="reset">Clear all responses…</button>
-<div id="confirm" hidden>
-  <p><b>Delete every response?</b> This can't be undone. Download the CSV first if you need it.</p>
-  <button class="btn danger" id="yes">Yes, delete all</button>
-  <button class="btn" id="no">Cancel</button>
-</div>
-<p id="msg"></p>
+<main>
+  <section class="card" id="login" hidden>
+    <h1>Survey admin</h1>
+    <p class="sub">Sign in to download or clear responses.</p>
+    <form id="loginForm">
+      <label for="u">Username</label>
+      <input id="u" name="username" type="email" autocomplete="username" required>
+      <label for="p">Password</label>
+      <input id="p" name="password" type="password" autocomplete="current-password" required>
+      <button class="btn primary" type="submit">Sign in</button>
+      <p class="err" id="loginErr" role="alert"></p>
+    </form>
+  </section>
+
+  <section class="card" id="panel" hidden>
+    <h1>Survey admin</h1>
+    <p class="sub">Responses so far</p>
+    <div class="count" id="count">–</div>
+    <a class="btn primary" id="csv" href="export.csv">Download responses (CSV)</a>
+    <a class="btn" href="/results" target="_blank" rel="noopener">Open live results</a>
+    <button class="btn danger" id="reset" type="button">Clear all responses…</button>
+    <div class="confirm" id="confirm" hidden>
+      <p><b>Delete every response?</b></p>
+      <p class="sub" style="margin-bottom:8px">This can't be undone. Download the CSV first if you need it.</p>
+      <div class="row"><button class="btn danger" id="yes" type="button">Yes, delete all</button><button class="btn" id="no" type="button">Cancel</button></div>
+    </div>
+    <p class="err" id="msg" role="status" style="color:var(--muted)"></p>
+    <button class="link" id="logout" type="button">Sign out</button>
+  </section>
+</main>
 <script>
-const key = new URLSearchParams(location.search).get("key") || "";
-document.getElementById("csv").href = "/export.csv?key=" + encodeURIComponent(key);
-fetch("/api/summary").then(r => r.json()).then(s => document.getElementById("count").textContent = s.total + " responses so far.");
-const c = document.getElementById("confirm");
-document.getElementById("reset").onclick = () => (c.hidden = false);
-document.getElementById("no").onclick = () => (c.hidden = true);
-document.getElementById("yes").onclick = async () => {
-  const r = await fetch("/api/reset", { method: "POST", headers: { "x-admin-key": key } });
-  document.getElementById("msg").textContent = r.ok ? "All responses cleared." : "Wrong or missing admin key.";
-  c.hidden = true;
-  if (r.ok) document.getElementById("count").textContent = "0 responses so far.";
+// Works whether the page is opened as /ad-reimagine-bme or /ad-reimagine-bme/
+const base = location.pathname.replace(/\/$/, "");
+const $ = (id) => document.getElementById(id);
+document.getElementById("csv").href = base + "/export.csv";
+
+async function refreshCount() {
+  try { const s = await (await fetch("/api/summary")).json(); $("count").textContent = s.total; } catch {}
+}
+async function show() {
+  let admin = false;
+  try { admin = (await (await fetch(base + "/me", { cache: "no-store" })).json()).admin; } catch {}
+  $("login").hidden = admin; $("panel").hidden = !admin;
+  if (admin) refreshCount(); else $("u").focus();
+}
+
+$("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector("button"); btn.disabled = true; $("loginErr").textContent = "";
+  try {
+    const r = await fetch(base + "/login", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: $("u").value, password: $("p").value }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || "Sign-in failed.");
+    $("p").value = ""; show();
+  } catch (x) { $("loginErr").textContent = x.message; }
+  finally { btn.disabled = false; }
+});
+
+$("reset").onclick = () => ($("confirm").hidden = false);
+$("no").onclick = () => ($("confirm").hidden = true);
+$("yes").onclick = async () => {
+  const r = await fetch(base + "/reset", { method: "POST" });
+  $("confirm").hidden = true;
+  $("msg").textContent = r.ok ? "All responses cleared." : "Your session expired. Please sign in again.";
+  if (r.ok) refreshCount(); else show();
 };
+$("logout").onclick = async () => { await fetch(base + "/logout", { method: "POST" }); show(); };
+show();
 </script>
 </body>
 </html>
