@@ -109,6 +109,7 @@ function render(force) {
 }
 
 connectLive("screen", (d) => { data = d; render(); }, (ok) => (document.getElementById("offline").hidden = ok));
+setInterval(() => fetch("/healthz").catch(() => {}), 4 * 60e3); // keeps the free host awake while the projector is on
 </script>
 </body>
 </html>

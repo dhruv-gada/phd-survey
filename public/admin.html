@@ -71,7 +71,6 @@
 
   <section id="panel" hidden>
     <div class="bar"><h1>Survey admin</h1><button class="link" id="logout" type="button">Sign out</button></div>
-    <div class="alert" id="storageAlert" hidden>Responses aren't being saved to the database yet, so they'll be lost if the server restarts. Add <b>DATABASE_URL</b> in Render to fix this.</div>
 
     <div class="control" aria-live="polite">
       <p class="now" id="now">Connecting</p>
@@ -93,7 +92,8 @@
     </div>
 
     <h2>Sessions</h2>
-    <p class="muted" style="margin:0 0 12px;font-size:15px">Each session has its own CSV. Start a new session for each new group. Phones can then answer again, and earlier sessions are kept.</p>
+    <p class="muted" style="margin:0 0 12px;font-size:15px">Each session has its own CSV. Start a new session for each new group, and phones can answer again.</p>
+    <div class="alert">Download the CSV when a session ends. Answers aren't kept permanently, so they're cleared when the site restarts.</div>
     <button class="btn wide" type="button" id="newOpen">Start a new session</button>
     <div class="confirm" id="newBox" hidden>
       <form class="newform" id="newForm">
@@ -137,7 +137,6 @@ async function load() {
     if (r.status === 403) return show();
     const j = await r.json();
     sessions = j.sessions; current = j.current;
-    $("storageAlert").hidden = j.storage !== "file";
     render();
   } catch {}
 }
@@ -232,6 +231,7 @@ async function show() {
     polling = true;
     setInterval(() => { if (!editing && !deleting) load(); }, 5000);
     connectLive("screen", (d) => { live = d; renderControl(); });
+    setInterval(() => fetch("/healthz").catch(() => {}), 4 * 60e3); // keeps the free host awake while this page is open
   }
 }
 $("loginForm").addEventListener("submit", async (e) => {

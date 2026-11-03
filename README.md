@@ -21,6 +21,10 @@ The admin moves the room through the questions. Students answer the current ques
 
 For a new group, press **Start a new session** on the admin page and give it a name. Everyone can then answer again. Each session is listed with its own **Download CSV** button, with one row per student.
 
+## No database
+
+Answers are kept in a small file on the server while it runs. Render's free plan clears that file whenever the site restarts or redeploys, so download each session's CSV from the admin page when the session ends. While the projector or admin page is open, it keeps the site awake.
+
 ## Anonymity
 
 Each phone gets a random cookie, so it can answer each question once. Names, emails and IP addresses are not stored. A phone can only answer the question that's currently on the screen.
@@ -34,7 +38,6 @@ ADMIN_USER=you@example.edu ADMIN_PASS=choose-a-password npm start
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | Postgres connection string. Needed on Render, because free services lose local files when they restart. |
 | `ADMIN_USER`, `ADMIN_PASS` | Admin sign-in |
 | `PUBLIC_URL` | Optional. Overrides the address the QR code points to. |
 

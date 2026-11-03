@@ -21,94 +21,37 @@ const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toSt
 const newSessionId = () => "s" + Date.now().toString(36);
 const freshState = () => ({ session: newSessionId(), q: -1, summary: false });
 
-// ---------- storage: Postgres when DATABASE_URL is set, else a local JSON file ----------
-let store;
-if (process.env.DATABASE_URL) {
-  const { Pool } = require("pg");
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false },
-  });
-  store = {
-    kind: "postgres",
-    async init() {
-      await pool.query("CREATE TABLE IF NOT EXISTS poll_state (id INT PRIMARY KEY, data JSONB NOT NULL)");
-      await pool.query(`CREATE TABLE IF NOT EXISTS answers (
-        session TEXT NOT NULL, q TEXT NOT NULL, device TEXT NOT NULL, answer JSONB NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (session, q, device))`);
-      await pool.query("CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
-    },
-    async addSession(id, name) {
-      await pool.query("INSERT INTO sessions (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING", [id, name]);
-    },
-    async renameSession(id, name) {
-      await pool.query("UPDATE sessions SET name = $2 WHERE id = $1", [id, name]);
-    },
-    async sessions() {
-      const r = await pool.query("SELECT id, name, created_at FROM sessions ORDER BY created_at DESC");
-      return r.rows.map((x) => ({ id: x.id, name: x.name, createdAt: x.created_at }));
-    },
-    async deleteSession(id) {
-      await pool.query("DELETE FROM answers WHERE session = $1", [id]);
-      await pool.query("DELETE FROM sessions WHERE id = $1", [id]);
-    },
-    async getState() {
-      const r = await pool.query("SELECT data FROM poll_state WHERE id = 1");
-      return r.rows[0] ? r.rows[0].data : null;
-    },
-    async setState(s) {
-      await pool.query("INSERT INTO poll_state (id, data) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data", [s]);
-    },
-    // Returns false when this device already answered this question.
-    async addAnswer(session, q, device, answer) {
-      const r = await pool.query(
-        "INSERT INTO answers (session, q, device, answer) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
-        [session, q, device, answer]
-      );
-      return r.rowCount === 1;
-    },
-    async answers(session) {
-      const r = session
-        ? await pool.query("SELECT session, q, device, answer, created_at FROM answers WHERE session = $1", [session])
-        : await pool.query("SELECT session, q, device, answer, created_at FROM answers ORDER BY created_at");
-      return r.rows.map((x) => ({ session: x.session, q: x.q, device: x.device, answer: x.answer, at: x.created_at }));
-    },
-    async wipe() {
-      await pool.query("DELETE FROM answers");
-      await pool.query("DELETE FROM sessions");
-    },
-  };
-} else {
-  const file = path.join(__dirname, "data", "store.json");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  let db = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : { state: null, answers: [] };
-  db.sessions = db.sessions || [];
-  const save = () => fs.writeFileSync(file, JSON.stringify(db));
-  store = {
-    kind: "file",
-    async init() {},
-    async getState() { return db.state; },
-    async setState(s) { db.state = s; save(); },
-    async addAnswer(session, q, device, answer) {
-      if (db.answers.some((a) => a.session === session && a.q === q && a.device === device)) return false;
-      db.answers.push({ session, q, device, answer, at: new Date().toISOString() });
-      save();
-      return true;
-    },
-    async answers(session) { return session ? db.answers.filter((a) => a.session === session) : db.answers; },
-    async wipe() { db.answers = []; db.sessions = []; save(); },
-    async addSession(id, name) {
-      if (!db.sessions.some((x) => x.id === id)) { db.sessions.push({ id, name, createdAt: new Date().toISOString() }); save(); }
-    },
-    async renameSession(id, name) { const x = db.sessions.find((x) => x.id === id); if (x) { x.name = name; save(); } },
-    async sessions() { return [...db.sessions].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); },
-    async deleteSession(id) {
-      db.answers = db.answers.filter((a) => a.session !== id);
-      db.sessions = db.sessions.filter((x) => x.id !== id);
-      save();
-    },
-  };
-}
+// ---------- storage: a JSON file next to the app (no database) ----------
+// The file lasts while the server runs. Hosts like Render's free plan clear it on restart,
+// so download each session's CSV when it ends.
+const file = path.join(__dirname, "data", "store.json");
+fs.mkdirSync(path.dirname(file), { recursive: true });
+let db = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : { state: null, answers: [] };
+db.sessions = db.sessions || [];
+const save = () => fs.writeFileSync(file, JSON.stringify(db));
+const store = {
+  async init() {},
+  async getState() { return db.state; },
+  async setState(s) { db.state = s; save(); },
+  async addAnswer(session, q, device, answer) {
+    if (db.answers.some((a) => a.session === session && a.q === q && a.device === device)) return false;
+    db.answers.push({ session, q, device, answer, at: new Date().toISOString() });
+    save();
+    return true;
+  },
+  async answers(session) { return session ? db.answers.filter((a) => a.session === session) : db.answers; },
+  async wipe() { db.answers = []; db.sessions = []; save(); },
+  async addSession(id, name) {
+    if (!db.sessions.some((x) => x.id === id)) { db.sessions.push({ id, name, createdAt: new Date().toISOString() }); save(); }
+  },
+  async renameSession(id, name) { const x = db.sessions.find((x) => x.id === id); if (x) { x.name = name; save(); } },
+  async sessions() { return [...db.sessions].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); },
+  async deleteSession(id) {
+    db.answers = db.answers.filter((a) => a.session !== id);
+    db.sessions = db.sessions.filter((x) => x.id !== id);
+    save();
+  },
+};
 
 // ---------- answer validation: only known option ids are kept ----------
 function cleanAnswer(q, v) {
@@ -275,6 +218,7 @@ app.get("/qr.svg", async (req, res) => {
   const svg = await QRCode.toString(surveyUrl(req), { type: "svg", margin: 0, errorCorrectionLevel: "M", color: { dark: "#0f2a2e", light: "#ffffff" } });
   res.type("image/svg+xml").set("Cache-Control", "no-cache").send(svg);
 });
+app.get("/healthz", (req, res) => res.send("ok"));
 app.get("/api/url", (req, res) => res.json({ url: surveyUrl(req) }));
 
 // ---------- presenter / admin (username + password from ADMIN_USER / ADMIN_PASS) ----------
@@ -367,7 +311,6 @@ admin.get("/sessions", needAdmin, async (req, res) => {
     answers[a.session] = (answers[a.session] || 0) + 1;
   }
   res.json({
-    storage: store.kind,
     current: state.session,
     sessions: list.map((x) => ({ ...x, respondents: people[x.id] ? people[x.id].size : 0, answers: answers[x.id] || 0 })),
   });
@@ -430,5 +373,5 @@ app.use(ADMIN_PATH, admin);
   await store.setState(state);
   if (!(await store.sessions()).some((x) => x.id === state.session)) await store.addSession(state.session, await defaultSessionName());
   await refreshResults();
-  app.listen(PORT, () => console.log(`Survey running on port ${PORT} (storage: ${store.kind})`));
+  app.listen(PORT, () => console.log(`Survey running on port ${PORT}`));
 })();
