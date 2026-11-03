@@ -1,48 +1,36 @@
 # Let us work together: live PhD student survey
 
-A presenter-run live poll. Students scan a QR code and answer anonymously on their phones, one question at a time, each against a countdown. When time runs out, the results appear on the projector and on every phone, and the presenter moves on to the next question.
+Share one link. Each student answers four questions on their phone, one at a time, with a 45-second countdown for each. After answering, they see that question's poll update live as classmates vote.
 
 ## Pages
 
-- `/`: the student page that the QR code opens
-- `/screen`: the projector view, with the QR code, the current question with its countdown, then the results
-- `/ad-reimagine-bme`: presenter controls (sign in with `ADMIN_USER` / `ADMIN_PASS`)
+- `/`: the survey. Share this link or the QR code.
+- `/results`: all four polls updating live, with the QR code. Good for a projector.
+- `/ad-reimagine-bme`: admin sign-in (`ADMIN_USER` / `ADMIN_PASS`) for downloading CSVs and starting a new session
 
-## Running a session
+## How it works
 
-1. Put `/screen` on the projector. It shows the QR code and how many phones have joined.
-2. On your phone or laptop, open `/ad-reimagine-bme`, pick a time per question, and press **Start question 1**.
-3. When the timer ends, the question closes on its own and everyone sees the results. **End question now** closes it early, and **Add 15 seconds** gives more time.
-4. Press **Start question 2**, and so on. After the last one, press **Show all results**.
-5. Running it again with a new group? Press **Start a new session** and give it a name, such as "Cohort B". Every phone can answer again.
+- Answers are anonymous. Each phone gets a random cookie so it can answer each question only once. Names, emails and IP addresses are not stored.
+- If the countdown runs out, the question is skipped and the student sees the results.
+- **Sessions:** to use the survey with a new group, start a new session on the admin page and give it a name. Everyone can then answer again. Each session has its own **Download CSV** button, with one row per student.
 
-## Sessions and CSVs
+## Settings
 
-Each session is stored separately. The presenter page lists every session with its date and number of respondents, and each one has its own **Download CSV** button. The file is named after the session, for example `phd-survey-cohort-b-2026-11-03.csv`. You can also download every session in one file, rename a session, or delete one. Each CSV has one row per phone.
-
-## One answer per phone
-
-Each phone gets a random anonymous cookie. The server accepts one answer per phone per question and refuses answers after the timer ends. Names, emails and IP addresses are not stored. A student who opens a private browser window gets a new cookie, so this is a deterrent, not a guarantee.
+- Time per question: `TIME_LIMIT` at the top of `questions.js`
+- The questions themselves: `questions.js`
 
 ## Run locally
 
 ```bash
 npm install
 ADMIN_USER=you@example.edu ADMIN_PASS=choose-a-password npm start
-# open http://localhost:3000/screen and http://localhost:3000/ad-reimagine-bme
+# open http://localhost:3000
 ```
-
-Without `DATABASE_URL`, answers are saved to `data/store.json`.
 
 ## Environment variables
 
 | Name | Purpose |
 |---|---|
-| `DATABASE_URL` | Postgres connection string. Strongly recommended on Render, because free services lose local files when they restart. |
-| `ADMIN_USER`, `ADMIN_PASS` | Presenter sign-in |
+| `DATABASE_URL` | Postgres connection string. Needed on Render, because free services lose local files when they restart. |
+| `ADMIN_USER`, `ADMIN_PASS` | Admin sign-in |
 | `PUBLIC_URL` | Optional. Overrides the address the QR code points to. |
-| `SESSION_SECRET` | Optional. Keeps presenters signed in across restarts. |
-
-## Editing the questions
-
-Every question lives in `questions.js`. The phone page, the projector, validation and the CSV are all generated from that file.

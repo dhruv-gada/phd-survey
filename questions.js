@@ -1,3 +1,6 @@
+// Seconds each student gets per question. When it runs out, the question is skipped.
+const TIME_LIMIT = 45;
+
 // Single source of truth for the survey. Shared by the server (validation +
 // aggregation) and the browser (rendering), served at /questions.js.
 const QUESTIONS = [
@@ -60,4 +63,4 @@ const QUESTIONS = [
   },
 ];
 
-if (typeof module !== "undefined") module.exports = { QUESTIONS };
+if (typeof module !== "undefined") module.exports = { QUESTIONS, TIME_LIMIT };

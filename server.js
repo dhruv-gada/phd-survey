@@ -11,17 +11,10 @@ const ADMIN_USER = (process.env.ADMIN_USER || "").trim().toLowerCase();
 const ADMIN_PASS = process.env.ADMIN_PASS || "";
 const ADMIN_PATH = "/ad-reimagine-bme";
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
-const GRACE_MS = 1500; // answers sent just as the clock hits zero still count
 
-/*
-  Poll state, persisted so a restart (or Render waking from sleep) resumes where it was.
-  phase: "lobby"  waiting for the presenter to start
-         "open"   question `q` is accepting answers until `endsAt`
-         "closed" question `q` is over and its results are shown
-         "ended"  all results are shown
-*/
+// The only shared state is which session is current. Each session's answers download as their own CSV.
 const newSessionId = () => "s" + Date.now().toString(36);
-const freshState = () => ({ session: newSessionId(), phase: "lobby", q: 0, endsAt: null, duration: 60, startedAt: null });
+const freshState = () => ({ session: newSessionId() });
 
 // ---------- storage: Postgres when DATABASE_URL is set, else a local JSON file ----------
 let store;
@@ -162,57 +155,34 @@ function summarize(answers) {
   return out;
 }
 
-// ---------- live state + realtime push (Server-Sent Events) ----------
+// ---------- realtime push (Server-Sent Events) ----------
 let state = null;
 let results = {};
-const clients = new Set(); // { res, role }
-let closeTimer = null;
+const clients = new Set();
 let pushTimer = null;
 
 async function refreshResults() {
   results = summarize(await store.answers(state.session));
 }
-function payload() {
-  const phones = [...clients].filter((c) => c.role === "phone").length;
-  const q = QUESTIONS[state.q];
-  return {
-    state,
-    now: Date.now(),
-    phones,
-    answered: q ? results[q.id].n : 0,
-    // Results of the current question stay hidden until it closes, so early answers don't sway later ones.
-    results: state.phase === "open" ? null : results,
-  };
-}
+const payload = () => ({ session: state.session, results });
 function push() {
-  // Coalesce bursts (many answers arriving at once) into one update every 250 ms.
+  // Coalesce bursts (a whole room answering at once) into one update every 300 ms.
   if (pushTimer) return;
   pushTimer = setTimeout(() => {
     pushTimer = null;
     const msg = `data: ${JSON.stringify(payload())}\n\n`;
-    for (const c of clients) c.res.write(msg);
-  }, 250);
-}
-function scheduleClose() {
-  clearTimeout(closeTimer);
-  if (state.phase !== "open" || !state.endsAt) return;
-  closeTimer = setTimeout(() => setPhase({ phase: "closed" }).catch(console.error), Math.max(0, state.endsAt - Date.now() + GRACE_MS));
+    for (const res of clients) res.write(msg);
+  }, 300);
 }
 const cleanName = (n) => (typeof n === "string" ? n.replace(/\s+/g, " ").trim().slice(0, 80) : "");
 async function defaultSessionName() {
   return "Session " + ((await store.sessions()).length + 1);
 }
 async function startSession(name) {
-  const fresh = { ...freshState(), duration: state ? state.duration : 60 };
-  await store.addSession(fresh.session, cleanName(name) || (await defaultSessionName()));
-  await setPhase(fresh);
-}
-async function setPhase(patch) {
-  state = { ...state, ...patch };
-  if (state.phase !== "open") state.endsAt = null;
+  state = freshState();
+  await store.addSession(state.session, cleanName(name) || (await defaultSessionName()));
   await store.setState(state);
   await refreshResults();
-  scheduleClose();
   push();
 }
 
@@ -242,19 +212,16 @@ app.get("/questions.js", (req, res) => res.sendFile(path.join(__dirname, "questi
 app.use("/static", express.static(path.join(__dirname, "public", "static"), { maxAge: "5m" }));
 
 app.get("/events", (req, res) => {
-  const role = req.query.role === "phone" ? "phone" : "screen";
   res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" });
   res.flushHeaders();
   res.write("retry: 2000\n\n");
   res.write(`data: ${JSON.stringify(payload())}\n\n`);
-  const client = { res, role };
-  clients.add(client);
-  push(); // phone count changed
+  clients.add(res);
   const ping = setInterval(() => res.write(": ping\n\n"), 20000);
-  req.on("close", () => { clearInterval(ping); clients.delete(client); push(); });
+  req.on("close", () => { clearInterval(ping); clients.delete(res); });
 });
 
-// Which questions in the current session this phone has already answered.
+// Which questions this phone has already answered in the current session.
 app.get("/api/me", async (req, res) => {
   const dev = deviceId(req, res);
   const mine = (await store.answers(state.session)).filter((a) => a.device === dev).map((a) => a.q);
@@ -263,22 +230,19 @@ app.get("/api/me", async (req, res) => {
 
 app.post("/api/answer", async (req, res) => {
   const dev = deviceId(req, res);
-  const q = QUESTIONS[state.q];
   const { question, answer } = req.body || {};
-  if (state.phase !== "open" || !q || question !== q.id) {
-    return res.status(409).json({ ok: false, error: "This question is closed." });
-  }
-  if (state.endsAt && Date.now() > state.endsAt + GRACE_MS) {
-    return res.status(409).json({ ok: false, error: "Time is up for this question." });
-  }
+  const q = QUESTIONS.find((x) => x.id === question);
+  if (!q) return res.status(400).json({ ok: false, error: "Unknown question." });
   const clean = cleanAnswer(q, answer);
   if (!clean) return res.status(400).json({ ok: false, error: "Choose an answer first." });
   try {
+    // One answer per phone per question; a repeat is ignored, not counted twice.
     const added = await store.addAnswer(state.session, q.id, dev, clean);
-    if (!added) return res.json({ ok: true, duplicate: true });
-    results[q.id] = summarize(await store.answers(state.session))[q.id];
-    res.json({ ok: true });
-    push();
+    if (added) {
+      results[q.id] = summarize((await store.answers(state.session)).filter((a) => a.q === q.id))[q.id];
+      push();
+    }
+    res.json({ ok: true, duplicate: !added });
   } catch (e) {
     console.error(e);
     res.status(500).json({ ok: false, error: "Your answer was not saved. Try again." });
@@ -339,64 +303,23 @@ admin.post("/login", (req, res) => {
 });
 admin.post("/logout", (req, res) => { setAdminCookie(req, res, "", 0); res.json({ ok: true }); });
 
-admin.get("/status", needAdmin, async (req, res) => {
-  const all = await store.answers();
-  const sessions = [...new Set(all.map((a) => a.session))];
-  const meta = (await store.sessions()).find((x) => x.id === state.session);
-  res.json({ ...payload(), results, storage: store.kind, sessionName: meta ? meta.name : "", sessions: sessions.length, totalAnswers: all.length });
+admin.post("/new-session", needAdmin, async (req, res) => {
+  await startSession((req.body || {}).name);
+  res.json({ ok: true });
 });
-
-admin.post("/control", needAdmin, async (req, res) => {
-  const body = req.body || {};
-  const { action } = body;
-  const dur = Math.min(600, Math.max(10, Number(body.duration) || state.duration || 60));
-  switch (action) {
-    case "start": {
-      const qi = Number.isInteger(body.q) ? body.q : state.q;
-      if (!QUESTIONS[qi]) return res.status(400).json({ ok: false, error: "Unknown question." });
-      await setPhase({ phase: "open", q: qi, duration: dur, startedAt: Date.now(), endsAt: Date.now() + dur * 1000 });
-      break;
-    }
-    case "extend":
-      if (state.phase !== "open") return res.status(409).json({ ok: false, error: "No question is open." });
-      await setPhase({ endsAt: state.endsAt + 15000, duration: state.duration + 15 });
-      break;
-    case "close":
-      await setPhase({ phase: "closed" });
-      break;
-    case "summary":
-      await setPhase({ phase: "ended" });
-      break;
-    case "lobby":
-      await setPhase({ phase: "lobby" });
-      break;
-    case "duration":
-      await setPhase({ duration: dur });
-      break;
-    case "new-session":
-      await startSession(body.name);
-      break;
-    case "rename-session": {
-      const n = cleanName(body.name);
-      if (!n) return res.status(400).json({ ok: false, error: "Type a name for the session." });
-      await store.renameSession(body.session || state.session, n);
-      break;
-    }
-    case "delete-session": {
-      if (!body.session) return res.status(400).json({ ok: false, error: "Choose a session to delete." });
-      await store.deleteSession(body.session);
-      if (body.session === state.session) await startSession();
-      else await refreshResults();
-      break;
-    }
-    case "delete-all":
-      await store.wipe();
-      await startSession();
-      break;
-    default:
-      return res.status(400).json({ ok: false, error: "Unknown action." });
-  }
-  res.json({ ok: true, ...payload(), results });
+admin.post("/rename-session", needAdmin, async (req, res) => {
+  const { session, name } = req.body || {};
+  const n = cleanName(name);
+  if (!session || !n) return res.status(400).json({ ok: false, error: "Type a name for the session." });
+  await store.renameSession(session, n);
+  res.json({ ok: true });
+});
+admin.post("/delete-session", needAdmin, async (req, res) => {
+  const { session } = req.body || {};
+  if (!session) return res.status(400).json({ ok: false, error: "Choose a session to delete." });
+  await store.deleteSession(session);
+  if (session === state.session) await startSession();
+  res.json({ ok: true });
 });
 
 // Every session with how many phones answered, newest first.
@@ -408,6 +331,7 @@ admin.get("/sessions", needAdmin, async (req, res) => {
     answers[a.session] = (answers[a.session] || 0) + 1;
   }
   res.json({
+    storage: store.kind,
     current: state.session,
     sessions: list.map((x) => ({ ...x, respondents: people[x.id] ? people[x.id].size : 0, answers: answers[x.id] || 0 })),
   });
@@ -465,12 +389,10 @@ app.use(ADMIN_PATH, admin);
 
 (async () => {
   await store.init();
-  state = { ...freshState(), ...((await store.getState()) || {}) };
-  if (state.phase === "open" && state.endsAt && Date.now() > state.endsAt + GRACE_MS) state.phase = "closed";
-  if (state.phase !== "open") state.endsAt = null;
+  const saved = await store.getState();
+  state = saved && saved.session ? { session: saved.session } : freshState();
   await store.setState(state);
   if (!(await store.sessions()).some((x) => x.id === state.session)) await store.addSession(state.session, await defaultSessionName());
   await refreshResults();
-  scheduleClose();
-  app.listen(PORT, () => console.log(`Poll running on port ${PORT} (storage: ${store.kind})`));
+  app.listen(PORT, () => console.log(`Survey running on port ${PORT} (storage: ${store.kind})`));
 })();

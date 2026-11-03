@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ffffff">
-<title>PhD student survey</title>
+<title>Let us work together</title>
 <link rel="stylesheet" href="/static/base.css">
 <style>
-  main { max-width: 560px; margin: 0 auto; padding: 18px 20px 120px; min-height: 100svh; }
+  main { max-width: 560px; margin: 0 auto; padding: 18px 20px 130px; min-height: 100svh; }
   .top { position: sticky; top: 0; z-index: 2; background: var(--paper); padding: 14px 0 12px; margin: -18px 0 8px; }
-  .step { color: var(--ink-2); font-size: 15px; margin-bottom: 8px; display: flex; justify-content: space-between; }
+  .step { color: var(--ink-2); font-size: 15px; margin: 0 0 8px; }
   h1 { font-size: 27px; line-height: 1.18; font-weight: 700; letter-spacing: -0.012em; margin: 6px 0 6px; font-variation-settings: "opsz" 48; }
   .hint { color: var(--ink-2); margin: 0 0 20px; font-size: 15px; }
 
@@ -35,55 +35,81 @@
   .seg label:has(input:checked) { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
   .seg label:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
 
-  .send-bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: var(--paper); border-top: 1px solid var(--rule); }
-  .send-bar > div { max-width: 520px; margin: 0 auto; }
-  .send { display: block; width: 100%; min-height: 54px; border: 0; border-radius: 8px; background: var(--ink); color: #fff; font-weight: 650; font-size: 18px; cursor: pointer; }
-  .send:disabled { background: var(--wash); color: var(--ink-2); cursor: default; }
+  .bottom { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: var(--paper); border-top: 1px solid var(--rule); }
+  .bottom > div { max-width: 520px; margin: 0 auto; }
+  .primary { display: block; width: 100%; min-height: 54px; border: 0; border-radius: 8px; background: var(--ink); color: #fff; font-weight: 650; font-size: 18px; cursor: pointer; }
+  .primary:disabled { background: var(--wash); color: var(--ink-2); cursor: default; }
   .err { color: var(--brick); font-weight: 550; margin: 8px 0 0; font-size: 15px; }
 
-  .notice { padding: 56px 0 0; }
-  .notice h1 { font-size: 34px; margin-bottom: 10px; }
-  .notice p { color: var(--ink-2); margin: 0 0 8px; font-size: 18px; max-width: 32ch; }
-  .sent-mark { width: 52px; height: 52px; border-radius: 50%; background: var(--teal); display: grid; place-items: center; margin-bottom: 22px; }
-  .sent-mark svg { width: 26px; height: 26px; }
-  .results { margin-top: 22px; }
-  .tag { display: inline-block; color: var(--ink-2); font-size: 15px; margin: 0 0 4px; }
-  .end-q { padding: 26px 0 8px; border-top: 1px solid var(--rule); margin-top: 26px; }
-  .end-q h2 { font-size: 19px; line-height: 1.25; margin: 0 0 14px; }
-
-  .offline { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 8px 14px; border-radius: 6px; font-size: 14px; }
+  .intro { padding-top: 40px; }
+  .intro h1 { font-size: 38px; line-height: 1.05; margin-bottom: 16px; font-variation-settings: "opsz" 96; }
+  .intro p { color: var(--ink-2); font-size: 18px; margin: 0 0 12px; max-width: 32ch; }
+  .note { font-size: 15px; color: var(--ink-2); margin: 0 0 4px; }
+  .live { color: var(--teal); font-weight: 600; }
+  .results { margin-top: 18px; }
+  .all-q { padding: 24px 0 6px; border-top: 1px solid var(--rule); margin-top: 22px; }
+  .all-q h2 { font-size: 19px; line-height: 1.25; margin: 0 0 14px; }
+  .offline { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 8px 14px; border-radius: 6px; font-size: 14px; }
 </style>
 </head>
 <body>
-<main id="app" aria-live="polite"></main>
+<main id="app"></main>
 <div class="offline" id="offline" hidden>Reconnecting</div>
 
 <script src="/questions.js"></script>
 <script src="/static/shared.js"></script>
 <script>
+/*
+  Each student goes through the questions at their own pace:
+  intro -> question (with countdown) -> that question's live results -> next question ... -> all results.
+  Progress is kept in localStorage per session, so a reload picks up where they were.
+*/
 const app = document.getElementById("app");
-let data = null;          // latest payload from the server
-let mine = new Set();     // question ids this phone has answered in this session
-let mineSession = null;
-let viewKey = "";
-let stopClock = null;
-const clockState = {};
+let live = null;                 // latest results from the server
+let session = null;
+let answered = new Set();        // answered on the server, this session
+let prog = { skipped: [], started: {}, began: false };
+let view = null, cur = 0, stopClock = null;
 
-async function loadMine() {
-  try {
-    const j = await (await fetch("/api/me", { cache: "no-store" })).json();
-    mine = new Set(j.answered); mineSession = j.session;
-  } catch {}
+const key = () => "phd-survey:" + session;
+const save = () => { try { localStorage.setItem(key(), JSON.stringify(prog)); } catch {} };
+const load = () => { try { return JSON.parse(localStorage.getItem(key())) || null; } catch { return null; } };
+const done = (q) => answered.has(q.id) || prog.skipped.includes(q.id);
+const nextIndex = () => QUESTIONS.findIndex((q) => !done(q));
+
+async function boot() {
+  const j = await (await fetch("/api/me", { cache: "no-store" })).json();
+  session = j.session;
+  answered = new Set(j.answered);
+  prog = { skipped: [], started: {}, began: false, ...(load() || {}) };
+  const n = nextIndex();
+  if (n === -1) showAll();
+  else if (!prog.began && !answered.size) showIntro();
+  else showQuestion(n);
 }
 
-function header(qi, withClock) {
-  return `<div class="top"><div class="step"><span>Question ${qi + 1} of ${QUESTIONS.length}</span></div>` +
-    (withClock ? `<div class="clock" id="clock"><div class="clock-track"><div class="clock-fill"></div></div><div class="clock-num"></div></div>` : "") +
-    `</div>`;
+function clear() { if (stopClock) { stopClock(); stopClock = null; } window.scrollTo(0, 0); }
+
+function showIntro() {
+  clear(); view = "intro";
+  app.innerHTML = `<section class="intro"><h1>Let us work together</h1>` +
+    `<p>${["Zero","One","Two","Three","Four","Five","Six"][QUESTIONS.length] || QUESTIONS.length} quick questions about your PhD goals. You have ${TIME_LIMIT} seconds for each one.</p>` +
+    `<p>After each answer you'll see how everyone has voted so far, live.</p>` +
+    `<p class="note">Anonymous. No names or emails are collected.</p></section>` +
+    `<div class="bottom"><div><button class="primary" id="go">Start</button></div></div>`;
+  document.getElementById("go").onclick = () => { prog.began = true; save(); showQuestion(0); };
 }
 
-function questionForm(q) {
-  let h = `<h1>${esc(q.title)}</h1><p class="hint">${esc(q.hint)}</p><form id="form" class="${q.type}" novalidate>`;
+function showQuestion(i) {
+  clear(); view = "ask"; cur = i;
+  const q = QUESTIONS[i];
+  if (!prog.started[q.id]) { prog.started[q.id] = Date.now(); prog.began = true; save(); }
+  const endsAt = prog.started[q.id] + TIME_LIMIT * 1000;
+  if (Date.now() >= endsAt) return timeUp(i);
+
+  let h = `<div class="top"><p class="step">Question ${i + 1} of ${QUESTIONS.length}</p>` +
+    `<div class="clock" id="clock"><div class="clock-track"><div class="clock-fill"></div></div><div class="clock-num"></div></div></div>` +
+    `<h1>${esc(q.title)}</h1><p class="hint">${esc(q.hint)}</p><form id="form" class="${q.type}" novalidate>`;
   if (q.type === "matrix") {
     for (const r of q.rows) {
       h += `<div class="mrow" role="radiogroup" aria-label="${esc(r.label)}"><div>${esc(r.label)}</div><div class="seg">`;
@@ -97,8 +123,43 @@ function questionForm(q) {
       if (o.id === q.otherId) h += `<input class="other" id="other" maxlength="200" placeholder="What path? (optional)" aria-label="Other path" hidden>`;
     }
   }
-  h += `</form><div class="send-bar"><div><button class="send" id="send" type="button" disabled>Choose an answer</button><p class="err" id="err" hidden></p></div></div>`;
-  return h;
+  h += `</form><div class="bottom"><div><button class="primary" id="send" disabled>Choose an answer</button><p class="err" id="err" hidden></p></div></div>`;
+  app.innerHTML = h;
+
+  const form = document.getElementById("form"), send = document.getElementById("send"), err = document.getElementById("err"), other = document.getElementById("other");
+  const sync = () => {
+    const a = readAnswer(q, form);
+    send.disabled = !a;
+    if (a) send.textContent = "Send answer";
+    else if (q.type === "matrix") {
+      const n = q.rows.filter((r) => form.querySelector(`input[name="${r.id}"]:checked`)).length;
+      send.textContent = `Answer all ${q.rows.length} areas (${n} of ${q.rows.length})`;
+    } else send.textContent = q.type === "multi" ? "Choose at least one" : "Choose an answer";
+    if (other) other.hidden = !form.querySelector(`input[value="${q.otherId}"]:checked`);
+  };
+  form.addEventListener("change", sync);
+  send.onclick = async () => {
+    const a = readAnswer(q, form);
+    if (!a) return;
+    send.disabled = true; send.textContent = "Sending"; err.hidden = true;
+    try {
+      const r = await fetch("/api/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q.id, answer: a }) });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error);
+      answered.add(q.id);
+      showResult(i, false);
+    } catch (e) {
+      err.textContent = e.message || "Your answer wasn't sent. Check your connection and try again.";
+      err.hidden = false; sync();
+    }
+  };
+  stopClock = runClock(document.getElementById("clock"), { duration: TIME_LIMIT, endsAt, onTimeUp: () => timeUp(i) });
+}
+
+function timeUp(i) {
+  const q = QUESTIONS[i];
+  if (!answered.has(q.id) && !prog.skipped.includes(q.id)) { prog.skipped.push(q.id); save(); }
+  showResult(i, true);
 }
 
 function readAnswer(q, form) {
@@ -121,88 +182,50 @@ function readAnswer(q, form) {
   return Object.keys(rows).length === q.rows.length ? { rows } : null;
 }
 
-function wireForm(q) {
-  const form = document.getElementById("form");
-  const send = document.getElementById("send");
-  const err = document.getElementById("err");
-  const other = document.getElementById("other");
-  const sync = () => {
-    const a = readAnswer(q, form);
-    send.disabled = !a;
-    if (a) send.textContent = "Send answer";
-    else if (q.type === "matrix") {
-      const done = q.rows.filter((r) => form.querySelector(`input[name="${r.id}"]:checked`)).length;
-      send.textContent = `Answer all ${q.rows.length} areas (${done} of ${q.rows.length})`;
-    } else send.textContent = q.type === "multi" ? "Choose at least one" : "Choose an answer";
-    if (other) other.hidden = !form.querySelector(`input[value="${q.otherId}"]:checked`);
-  };
-  form.addEventListener("change", sync);
-  send.addEventListener("click", async () => {
-    const a = readAnswer(q, form);
-    if (!a) return;
-    send.disabled = true; send.textContent = "Sending"; err.hidden = true;
-    try {
-      const r = await fetch("/api/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q.id, answer: a }) });
-      const j = await r.json();
-      if (!j.ok) throw new Error(j.error);
-      mine.add(q.id);
-      render(true);
-    } catch (e) {
-      err.textContent = e.message || "Your answer was not sent. Check your connection and try again.";
-      err.hidden = false;
-      sync();
+function countLine(d) {
+  return `${answerNoun(d ? d.n : 0)} so far. <span class="live">Updating live.</span>`;
+}
+
+function showResult(i, timedOut) {
+  clear(); view = "result"; cur = i;
+  const q = QUESTIONS[i], n = nextIndex();
+  app.innerHTML = `<p class="step" style="margin-top:4px">Question ${i + 1} of ${QUESTIONS.length}</p><h1>${esc(q.title)}</h1>` +
+    (timedOut ? `<p class="note" style="color:var(--brick)">Time ran out, so this one was skipped.</p>` : "") +
+    `<p class="note" id="count">${countLine(live && live.results[q.id])}</p><div class="results" id="res"></div>` +
+    `<div class="bottom"><div><button class="primary" id="next">${n === -1 ? "See all results" : "Next question"}</button></div></div>`;
+  if (live) showResults(document.getElementById("res"), q, live.results[q.id]);
+  document.getElementById("next").onclick = () => (n === -1 ? showAll() : showQuestion(n));
+}
+
+function showAll() {
+  clear(); view = "all";
+  app.innerHTML = `<section class="intro" style="padding-top:12px"><h1>Thank you.</h1><p>Here's how everyone has answered so far. <span class="live">Updating live.</span></p></section>` +
+    QUESTIONS.map((q) => `<section class="all-q"><h2>${esc(q.title)}</h2><p class="note" data-count="${q.id}"></p><div class="results" data-res="${q.id}"></div></section>`).join("");
+  refreshLive();
+}
+
+// Apply incoming live numbers to whatever results are on screen.
+function refreshLive() {
+  if (!live) return;
+  if (view === "result") {
+    const q = QUESTIONS[cur];
+    document.getElementById("count").innerHTML = countLine(live.results[q.id]);
+    showResults(document.getElementById("res"), q, live.results[q.id]);
+  } else if (view === "all") {
+    for (const q of QUESTIONS) {
+      app.querySelector(`[data-count="${q.id}"]`).textContent = answerNoun(live.results[q.id].n);
+      showResults(app.querySelector(`[data-res="${q.id}"]`), q, live.results[q.id]);
     }
-  });
-}
-
-function render(force) {
-  if (!data) return;
-  const s = data.state;
-  if (s.session !== mineSession) { mineSession = s.session; mine = new Set(); loadMine().then(() => render(true)); }
-  const q = QUESTIONS[s.q];
-  const answered = q && mine.has(q.id);
-  const timeLeft = s.endsAt ? s.endsAt - serverNow() : 0;
-  let view = s.phase;
-  if (s.phase === "open") view = answered ? "sent" : timeLeft <= 0 ? "timeup" : "ask";
-  // Only results views depend on incoming numbers; others redraw only when the view itself changes.
-  const key = [s.session, view, s.q, view === "closed" || view === "ended" ? JSON.stringify(data.results) : ""].join("|");
-  Object.assign(clockState, s);
-  if (key === viewKey && !force) return;
-  viewKey = key;
-  if (stopClock) { stopClock(); stopClock = null; }
-
-  if (view === "lobby") {
-    app.innerHTML = `<section class="notice"><h1>You're in.</h1><p>Questions appear here one at a time once the session starts. Keep this page open.</p><p>No names or emails are collected.</p></section>`;
-  } else if (view === "ask") {
-    app.innerHTML = header(s.q, true) + questionForm(q);
-    wireForm(q);
-  } else if (view === "sent" || view === "timeup") {
-    app.innerHTML = header(s.q, true) + `<section class="notice" style="padding-top:28px">` +
-      (view === "sent"
-        ? `<div class="sent-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div><h1>Answer sent.</h1><p>Results show here when time runs out.</p>`
-        : `<h1>Time's up.</h1><p>Results show here in a moment.</p>`) + `</section>`;
-  } else if (view === "closed") {
-    app.innerHTML = header(s.q, false) +
-      `<h1>${esc(q.title)}</h1><p class="hint">${answerNoun(data.results[q.id].n)}${answered ? "" : ". You didn't answer this one."}</p>` +
-      `<div class="results" id="res">${resultsHTML(q, data.results[q.id])}</div>` +
-      `<p class="hint" style="margin-top:28px">${s.q < QUESTIONS.length - 1 ? "The next question will appear here." : "That was the last question."}</p>`;
-    growBars(app);
-  } else if (view === "ended") {
-    app.innerHTML = `<section class="notice" style="padding-top:28px"><h1>Thank you.</h1><p>Here's how everyone answered.</p></section>` +
-      QUESTIONS.map((x) => `<section class="end-q"><h2>${esc(x.title)}</h2>${resultsHTML(x, data.results[x.id])}</section>`).join("");
-    growBars(app);
-  }
-
-  const clock = document.getElementById("clock");
-  if (clock && s.phase === "open") {
-    stopClock = runClock(clock, clockState);
-    clock.addEventListener("timeup", () => { if (view === "ask") render(true); });
   }
 }
 
-loadMine().then(() => {
-  connectLive("phone", (d) => { data = d; render(); }, (ok) => (document.getElementById("offline").hidden = ok));
-});
+boot().then(() => {
+  connectLive((d) => {
+    // A new session was started by the organisers: begin again.
+    if (session && d.session !== session) { live = d; return boot(); }
+    live = d; refreshLive();
+  }, (ok) => (document.getElementById("offline").hidden = ok));
+}).catch(() => { app.innerHTML = `<section class="intro"><h1>Can't connect.</h1><p>Check your internet connection, then reload this page.</p></section>`; });
 </script>
 </body>
 </html>
