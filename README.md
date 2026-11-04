@@ -17,6 +17,17 @@ The admin moves the room through the questions. Students answer the current ques
 
 **Back** returns to the previous question, and **Show QR code** returns to the start screen.
 
+### Sharing your screen (Zoom, Teams, Meet)
+
+Share only the projector tab (`/results`), never the admin page. In a browser where you're signed in as admin, the projector tab responds to keys, and nothing about them shows on screen:
+
+| Key | Does |
+|---|---|
+| Right arrow, Space, Page Down (most clickers) | Next question |
+| Left arrow, Page Up | Back |
+| Q | Back to the QR code |
+| F | Full screen |
+
 ## Sessions and CSVs
 
 For a new group, press **Start a new session** on the admin page and give it a name. Everyone can then answer again. Each session is listed with its own **Download CSV** button, with one row per student.

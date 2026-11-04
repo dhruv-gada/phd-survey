@@ -104,6 +104,30 @@ function render(force) {
 }
 
 connectLive("screen", (d) => { data = d; render(); }, (ok) => (document.getElementById("offline").hidden = ok));
+// Hidden presenter keys. They only work in a browser signed in to the admin page, and nothing about them
+// is drawn on screen, so this tab can be screen-shared safely.
+//   Right arrow, Space, Page Down (most clickers): next    Left arrow, Page Up: back
+//   Q: back to the QR code    F: full screen
+fetch("/ad-reimagine-bme/me", { cache: "no-store" }).then((r) => r.json()).then((j) => {
+  if (!j.admin) return;
+  let busy = false;
+  const go = async (to) => {
+    if (busy) return;
+    busy = true;
+    try { await fetch("/ad-reimagine-bme/go", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to }) }); }
+    finally { busy = false; }
+  };
+  document.addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (["ArrowRight", "PageDown", " "].includes(e.key)) { e.preventDefault(); go("next"); }
+    else if (["ArrowLeft", "PageUp"].includes(e.key)) { e.preventDefault(); go("back"); }
+    else if (e.key === "q" || e.key === "Q") go("waiting");
+    else if (e.key === "f" || e.key === "F") {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      else document.documentElement.requestFullscreen().catch(() => {});
+    }
+  });
+}).catch(() => {});
 setInterval(() => fetch("/healthz").catch(() => {}), 4 * 60e3); // keeps the free host awake while the projector is on
 </script>
 </body>

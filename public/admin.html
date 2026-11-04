@@ -36,6 +36,7 @@
   .preview-label a { color: var(--ink-2); }
   .preview { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); margin-bottom: 14px; }
   .preview iframe { position: absolute; top: 0; left: 0; width: 1600px; height: 900px; border: 0; transform-origin: 0 0; pointer-events: none; }
+  .tip { border-left: 4px solid var(--teal); padding: 10px 14px; background: var(--teal-soft); margin-bottom: 14px; font-size: 15px; line-height: 1.45; }
   .share { background: var(--wash); border-radius: 10px; padding: 18px; }
   .share .url { font-size: 22px; font-weight: 700; word-break: break-all; margin: 2px 0 14px; }
   .share .row { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -86,15 +87,19 @@
       </div>
     </div>
 
-    <p class="preview-label"><span>What the projector shows</span><a href="/results" target="_blank" rel="noopener">Open full screen</a></p>
+    <p class="preview-label"><span>What the projector shows</span><a href="/results" target="_blank" rel="noopener">Open projector tab</a></p>
     <div class="preview" id="preview"><iframe id="previewFrame" title="Projector preview" tabindex="-1" aria-hidden="true"></iframe></div>
+
+    <div class="tip">
+      <b>Sharing your screen?</b> Open the projector tab and share only that tab, not this page. In the projector tab, use the arrow keys or a clicker to move between questions, Q to go back to the QR code, and F for full screen. None of this shows on screen.
+    </div>
 
     <div class="share">
       <p class="muted" style="margin:0">Link to share with students</p>
       <p class="url" id="shareUrl"></p>
       <div class="row">
         <button class="btn primary" type="button" id="copy">Copy link</button>
-        <a class="btn" href="/results" target="_blank" rel="noopener">Open projector screen</a>
+        <a class="btn" href="/results" target="_blank" rel="noopener">Open projector tab</a>
       </div>
     </div>
 
