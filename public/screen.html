@@ -95,7 +95,7 @@ function render(force) {
       app.querySelector(`[data-n="${q.id}"]`).textContent = answerNoun(data.results[q.id].n);
       showResults(app.querySelector(`[data-res="${q.id}"]`), q, data.results[q.id]);
     }
-  } else {
+  } else if (view !== "lobby") {
     const q = QUESTIONS[s.q], d = data.results[q.id];
     document.getElementById("count").textContent = d.n;
     document.getElementById("countNoun").textContent = d.n === 1 ? "answer" : "answers";
