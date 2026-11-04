@@ -202,7 +202,7 @@ function renderControl() {
     go.textContent = "Done"; go.disabled = true;
   } else if (s.q < 0) {
     $("now").textContent = "The screen is showing the QR code.";
-    $("meta").textContent = `${live.phones} ${live.phones === 1 ? "phone has" : "phones have"} joined.`;
+    $("meta").textContent = "Press Start when everyone is ready.";
     go.textContent = "Start question 1"; go.disabled = false;
   } else {
     const n = live.results[QUESTIONS[s.q].id].n;
