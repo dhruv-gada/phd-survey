@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Responses · Survey admin</title>
+<link rel="stylesheet" href="/static/base.css">
+<style>
+  main { max-width: 760px; margin: 0 auto; padding: 28px 20px 64px; }
+  h1 { font-size: 28px; line-height: 1.15; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 15px; font-weight: 600; color: var(--ink-2); margin: 34px 0 10px; }
+  .muted { color: var(--ink-2); }
+  label.f { display: block; font-weight: 600; font-size: 15px; margin: 16px 0 6px; }
+  input.f { width: 100%; padding: 12px 14px; font: inherit; color: var(--ink); background: var(--paper); border: 1.5px solid var(--rule); border-radius: 8px; }
+  input.f:focus { outline: none; border-color: var(--teal); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1.5px solid var(--rule);
+    background: var(--paper); font-weight: 600; cursor: pointer; text-decoration: none; color: var(--ink); font-size: 15px; }
+  .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .btn.warn { border-color: var(--brick); color: var(--brick); }
+  .btn.wide { width: 100%; min-height: 50px; font-size: 16px; }
+  .err { color: var(--brick); font-weight: 550; margin: 10px 0 0; }
+  .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 22px; }
+  button.link { background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; color: var(--ink-2); font-size: 15px; }
+  .alert { border-left: 4px solid var(--brick); padding: 10px 14px; background: #fbeeea; margin-bottom: 18px; font-size: 15px; }
+
+  .share { background: var(--wash); border-radius: 10px; padding: 18px; }
+  .share .url { font-size: 22px; font-weight: 700; word-break: break-all; margin: 2px 0 14px; }
+  .share .row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .newform { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .newform input { flex: 1 1 220px; }
+  .confirm { border: 1.5px solid var(--rule); border-radius: 8px; padding: 14px; margin-top: 8px; }
+  .confirm p { margin: 0; }
+  .confirm.danger { border-color: var(--brick); }
+  .confirm .row { display: flex; gap: 8px; margin-top: 10px; }
+
+  ul.sessions { list-style: none; margin: 14px 0 0; padding: 0; }
+  ul.sessions li { padding: 14px 0; border-top: 1px solid var(--rule); }
+  ul.sessions li:last-child { border-bottom: 1px solid var(--rule); }
+  .s-name { font-weight: 650; line-height: 1.3; }
+  .s-now { margin-left: 8px; font-size: 13px; font-weight: 600; color: var(--teal); }
+  .s-meta { color: var(--ink-2); font-size: 14px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .s-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .s-edit { display: flex; gap: 6px; margin-top: 10px; }
+  .s-edit input { flex: 1; min-width: 0; padding: 9px 12px; }
+</style>
+</head>
+<body>
+<main>
+  <section id="login" hidden>
+    <h1>Survey admin</h1>
+    <p class="muted">Sign in to download responses.</p>
+    <form id="loginForm">
+      <label class="f" for="u">Username</label>
+      <input class="f" id="u" type="email" autocomplete="username" required>
+      <label class="f" for="p">Password</label>
+      <input class="f" id="p" type="password" autocomplete="current-password" required>
+      <button class="btn primary wide" type="submit" style="margin-top:22px">Sign in</button>
+      <p class="err" id="loginErr" role="alert"></p>
+    </form>
+  </section>
+
+  <section id="panel" hidden>
+    <div class="bar"><h1>Responses</h1><button class="link" id="logout" type="button">Sign out</button></div>
+
+    <div class="share">
+      <p class="muted" style="margin:0">Link to share with students</p>
+      <p class="url" id="shareUrl"></p>
+      <div class="row">
+        <button class="btn primary" type="button" id="copy">Copy link</button>
+        <a class="btn" href="/ad-reimagine-bme">Back to presenter view</a>
+      </div>
+    </div>
+
+    <h2>Sessions</h2>
+    <p class="muted" style="margin:0 0 12px;font-size:15px">Each session has its own CSV. Start a new session for each new group, and phones can answer again.</p>
+    <div class="alert">Download the CSV when a session ends. Answers aren't kept permanently, so they're cleared when the site restarts.</div>
+    <button class="btn wide" type="button" id="newOpen">Start a new session</button>
+    <div class="confirm" id="newBox" hidden>
+      <form class="newform" id="newForm">
+        <input class="f" id="newName" maxlength="80" placeholder="Name, for example Cohort B (optional)" aria-label="Session name">
+        <button class="btn primary" type="submit">Start session</button>
+        <button class="btn" type="button" id="newCancel">Cancel</button>
+      </form>
+    </div>
+    <ul class="sessions" id="sessions"></ul>
+    <p class="err" id="err" role="alert" hidden></p>
+  </section>
+</main>
+
+<script src="/static/shared.js"></script>
+<script>
+const base = "/ad-reimagine-bme";
+const $ = (id) => document.getElementById(id);
+let sessions = [], current = null, editing = null, deleting = null, shareUrl = "";
+
+fetch("/api/url").then((r) => r.json()).then((j) => { shareUrl = j.url; $("shareUrl").textContent = j.url; });
+$("copy").onclick = async () => {
+  try { await navigator.clipboard.writeText(shareUrl); $("copy").textContent = "Copied"; }
+  catch { $("copy").textContent = "Select the link above to copy it"; }
+  setTimeout(() => ($("copy").textContent = "Copy link"), 2000);
+};
+
+async function post(path, body) {
+  $("err").hidden = true;
+  try {
+    const r = await fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+  } catch (e) { $("err").textContent = e.message || "That didn't work. Check your connection."; $("err").hidden = false; }
+  load();
+}
+
+async function load() {
+  try {
+    const r = await fetch(base + "/sessions", { cache: "no-store" });
+    if (r.status === 403) return show();
+    const j = await r.json();
+    sessions = j.sessions; current = j.current;
+    render();
+  } catch {}
+}
+
+const fmtDate = (d) => new Date(d).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const people = (n) => (n === 1 ? "1 person" : `${n} people`);
+
+function render() {
+  $("sessions").innerHTML = sessions.map((x) => {
+    let h = `<li><div class="s-name">${esc(x.name)}${x.id === current ? `<span class="s-now">Current</span>` : ""}</div>` +
+      `<div class="s-meta">Started ${fmtDate(x.createdAt)}. ${people(x.respondents)} answered.</div>`;
+    if (editing === x.id) {
+      h += `<form class="s-edit" data-rename="${x.id}"><input class="f" name="n" maxlength="80" value="${esc(x.name)}" aria-label="Session name"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-cancel>Cancel</button></form>`;
+    } else if (deleting === x.id) {
+      h += `<div class="confirm danger"><p>Delete “${esc(x.name)}” and its ${answerNoun(x.answers)}? This can't be undone.</p>` +
+        `<div class="row"><button class="btn warn" data-del="${x.id}">Delete session</button><button class="btn" data-cancel>Cancel</button></div></div>`;
+    } else {
+      h += `<div class="s-actions"><a class="btn" href="${base}/export.csv?session=${encodeURIComponent(x.id)}">Download CSV</a>` +
+        `<button class="btn" type="button" data-edit="${x.id}">Rename</button><button class="btn warn" type="button" data-ask-del="${x.id}">Delete</button></div>`;
+    }
+    return h + `</li>`;
+  }).join("");
+}
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("button");
+  if (!t) return;
+  if (t.dataset.edit) { editing = t.dataset.edit; deleting = null; render(); $("sessions").querySelector("input").select(); }
+  else if (t.dataset.askDel) { deleting = t.dataset.askDel; editing = null; render(); }
+  else if (t.dataset.del) { deleting = null; post("/delete-session", { session: t.dataset.del }); }
+  else if (t.hasAttribute("data-cancel")) { editing = deleting = null; render(); }
+});
+document.addEventListener("submit", (e) => {
+  const f = e.target.closest("form[data-rename]");
+  if (!f) return;
+  e.preventDefault(); editing = null;
+  post("/rename-session", { session: f.dataset.rename, name: f.elements.n.value });
+});
+$("newOpen").onclick = () => { $("newBox").hidden = false; $("newOpen").hidden = true; $("newName").focus(); };
+$("newCancel").onclick = () => { $("newBox").hidden = true; $("newOpen").hidden = false; };
+$("newForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  post("/new-session", { name: $("newName").value });
+  $("newName").value = ""; $("newBox").hidden = true; $("newOpen").hidden = false;
+});
+
+let polling = false;
+async function show() {
+  let ok = false;
+  try { ok = (await (await fetch(base + "/me", { cache: "no-store" })).json()).admin; } catch {}
+  $("login").hidden = ok; $("panel").hidden = !ok;
+  if (!ok) { $("u").focus(); return; }
+  load();
+  if (!polling) {
+    polling = true;
+    setInterval(() => { if (!editing && !deleting) load(); }, 5000);
+
+  }
+}
+$("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector("button"); btn.disabled = true; $("loginErr").textContent = "";
+  try {
+    const r = await fetch(base + "/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: $("u").value, password: $("p").value }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    $("p").value = ""; show();
+  } catch (x) { $("loginErr").textContent = x.message || "Sign-in didn't go through. Check your connection."; }
+  finally { btn.disabled = false; }
+});
+$("logout").onclick = async () => { await fetch(base + "/logout", { method: "POST" }); show(); };
+show();
+</script>
+</body>
+</html>

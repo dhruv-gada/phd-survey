@@ -4,29 +4,26 @@ The admin moves the room through the questions. Students answer the current ques
 
 ## Pages
 
-- `/`: the survey. Share this link or the QR code with students.
-- `/results`: the projector. It shows the QR code before you start, then the current question's live poll, then all results at the end.
-- `/ad-reimagine-bme`: admin sign-in (`ADMIN_USER` / `ADMIN_PASS`)
+- `/`: the survey. Students open this from the QR code.
+- `/ad-reimagine-bme`: **presenter view**. After you sign in, this tab shows exactly what the projector should show, so it's safe to screen-share or put on the projector. A small control bar sits at the bottom and fades out when the mouse is still.
+- `/ad-reimagine-bme/responses`: the student link, sessions and CSV downloads. Opens in its own tab so it never appears on the shared screen.
+- `/results`: the same projector view without controls, for a second display
 
 ## Running it
 
-1. Put `/results` on the projector. Students scan the QR code.
-2. On the admin page, press **Start question 1**.
-3. Students answer, and their phone tells them to look at the screen. The poll updates as answers come in.
-4. Press **Next question**. Every phone switches automatically. After the last question, press **Show all results**.
-
-**Back** returns to the previous question, and **Show QR code** returns to the start screen.
-
-### Sharing your screen (Zoom, Teams, Meet)
-
-Share only the projector tab (`/results`), never the admin page. In a browser where you're signed in as admin, the projector tab responds to keys, and nothing about them shows on screen:
+1. Sign in at `/ad-reimagine-bme`, then share that tab or put it on the projector. It starts on the QR code.
+2. Press **Start question 1** in the control bar, or the right arrow key.
+3. Students answer on their phones, which then tell them to look at the screen. The poll fills in live.
+4. Press **Next question**. After the last question, it says **Show all results**.
 
 | Key | Does |
 |---|---|
-| Right arrow, Space, Page Down (most clickers) | Next question |
+| Right arrow, Space, Page Down (most clickers) | Next |
 | Left arrow, Page Up | Back |
 | Q | Back to the QR code |
 | F | Full screen |
+
+Keys and clickers don't bring the control bar back, so presenting with them shows nothing extra on screen.
 
 ## Sessions and CSVs
 

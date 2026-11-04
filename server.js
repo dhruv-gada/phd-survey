@@ -248,6 +248,7 @@ const needAdmin = (req, res, next) => (isAdmin(req) ? next() : res.status(403).j
 const admin = express.Router();
 admin.use((req, res, next) => { res.set("Cache-Control", "no-store"); res.set("X-Robots-Tag", "noindex"); next(); });
 admin.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "admin.html")));
+admin.get("/responses", (req, res) => res.sendFile(path.join(__dirname, "public", "responses.html")));
 admin.get("/me", (req, res) => res.json({ admin: isAdmin(req) }));
 admin.post("/login", (req, res) => {
   const ip = req.ip || "?";
