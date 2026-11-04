@@ -7,7 +7,7 @@
 <title>Survey admin</title>
 <link rel="stylesheet" href="/static/base.css">
 <style>
-  main { max-width: 620px; margin: 0 auto; padding: 28px 20px 64px; }
+  main { max-width: 760px; margin: 0 auto; padding: 28px 20px 64px; }
   h1 { font-size: 28px; line-height: 1.15; margin: 0; letter-spacing: -0.01em; }
   h2 { font-size: 15px; font-weight: 600; color: var(--ink-2); margin: 34px 0 10px; }
   .muted { color: var(--ink-2); }
@@ -32,6 +32,10 @@
   .control .row { display: flex; gap: 8px; margin-top: 8px; }
   .control .row button { flex: 1; min-height: 44px; border-radius: 8px; border: 1.5px solid #3c5559; background: transparent; color: #fff; font-weight: 600; cursor: pointer; }
   .control .row button:disabled { opacity: 0.4; cursor: default; }
+  .preview-label { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 8px; font-size: 15px; color: var(--ink-2); }
+  .preview-label a { color: var(--ink-2); }
+  .preview { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); margin-bottom: 14px; }
+  .preview iframe { position: absolute; top: 0; left: 0; width: 1600px; height: 900px; border: 0; transform-origin: 0 0; pointer-events: none; }
   .share { background: var(--wash); border-radius: 10px; padding: 18px; }
   .share .url { font-size: 22px; font-weight: 700; word-break: break-all; margin: 2px 0 14px; }
   .share .row { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -81,6 +85,9 @@
         <button type="button" id="toQr">Show QR code</button>
       </div>
     </div>
+
+    <p class="preview-label"><span>What the projector shows</span><a href="/results" target="_blank" rel="noopener">Open full screen</a></p>
+    <div class="preview" id="preview"><iframe id="previewFrame" title="Projector preview" tabindex="-1" aria-hidden="true"></iframe></div>
 
     <div class="share">
       <p class="muted" style="margin:0">Link to share with students</p>
@@ -220,6 +227,13 @@ $("go").onclick = () => goTo("next");
 $("back").onclick = () => goTo("back");
 $("toQr").onclick = () => goTo("waiting");
 
+// Scale a full-size projector page (1600x900) down to the preview box.
+function fitPreview() {
+  const box = $("preview"), frame = $("previewFrame");
+  frame.style.transform = `scale(${box.clientWidth / 1600})`;
+}
+new ResizeObserver(fitPreview).observe($("preview"));
+
 let polling = false;
 async function show() {
   let ok = false;
@@ -231,6 +245,8 @@ async function show() {
     polling = true;
     setInterval(() => { if (!editing && !deleting) load(); }, 5000);
     connectLive("screen", (d) => { live = d; renderControl(); });
+    $("previewFrame").src = "/results";
+    fitPreview();
     setInterval(() => fetch("/healthz").catch(() => {}), 4 * 60e3); // keeps the free host awake while this page is open
   }
 }
